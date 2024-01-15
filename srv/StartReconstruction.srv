@@ -1,0 +1,9 @@
+# See Open3d documentation of create_from_color_and_depth
+float32 depth_scale
+float32 depth_trunc
+
+# See Open3d documentation of ScalableTSDFVolume
+float32 voxel_length
+float32 sdf_trunc
+---
+bool success
