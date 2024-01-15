@@ -1,0 +1,19 @@
+<package format="2">
+  <name>vinspect</name>
+  <description>Inpsection data recording and visualization.</description>
+
+  <version>0.1.0</version>
+
+  <maintainer email="marc.bestmann@dlr.de">Marc Bestmann</maintainer>
+
+  <author email="marc.bestmann@dlr.de">Marc Bestmann</author>
+  <author email="lewe.christansen@dlr.de">Lewe Christiansen</author>
+
+  <license>MIT</license>
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+  
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
