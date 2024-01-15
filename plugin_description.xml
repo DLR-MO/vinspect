@@ -1,0 +1,19 @@
+<library path="vinspect_rviz_plugins">
+  <class name="vinspect/Settings Panel" type="plugins::SettingsPanel" base_class_type="rviz_common::Panel">
+    <description>
+      Change settings for the vinspect software.
+    </description>
+  </class>
+
+  <class name="vinspect/Area Panel" type="plugins::AreaPanel" base_class_type="rviz_common::Panel">
+    <description>
+      Display data of an area from the vinspect software.
+    </description>
+  </class>
+
+  <class name="vinspect/Status Panel" type="plugins::StatusPanel" base_class_type="rviz_common::Panel">
+    <description>
+      Display current status of the vinspect software.
+    </description>
+  </class>
+</library>
