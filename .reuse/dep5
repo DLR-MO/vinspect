@@ -1,0 +1,10 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: vinspect_msgs
+Upstream-Contact: Marc Bestmann <marc.bestmann@dlr.de>
+Source: github.com/dlr-mo/vinspect_msgs
+
+# Sample paragraph, commented out:
+#
+# Files: src/*
+# Copyright: $YEAR $NAME <$CONTACT>
+# License: ...
