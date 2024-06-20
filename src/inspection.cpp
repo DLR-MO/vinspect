@@ -12,13 +12,18 @@ Inspection::Inspection(
   std::vector<SensorType> sensor_types, std::vector<std::string> sparse_types,
   std::vector<std::string> sparse_units, std::vector<std::string> joint_names,
   open3d::geometry::TriangleMesh mesh, std::tuple<int, int> dense_sensor_resolution,
-  std::string save_path, std::array<double, 3> inspection_space_min,
-  std::array<double, 3> inspection_space_max, std::vector<double> sparse_color_min_values,
+  std::string save_path, std::array<double, 3> inspection_space_3d_min, std::array<double,
+  3> inspection_space_3d_max, std::array<double,
+  6> inspection_space_6d_min, std::array<double, 6> inspection_space_6d_max,
+  std::vector<double> sparse_color_min_values,
   std::vector<double> sparse_color_max_values)
 {
   save_path_ = save_path;
-  inspection_space_.Min = inspection_space_min;
-  inspection_space_.Max = inspection_space_max;
+  inspection_space_3d_.Min = inspection_space_3d_min;
+  inspection_space_3d_.Max = inspection_space_3d_max;
+
+  inspection_space_6d_.Min = inspection_space_6d_min;
+  inspection_space_6d_.Max = inspection_space_6d_max;
   // todo maybe rename sparse->point and dense->area?
   //  Check if what type of sensor is used
   sensor_types_ = sensor_types;
@@ -44,14 +49,14 @@ Inspection::Inspection(
     sparse_data_count_ = 0;
     if (sparse_types.empty()) {
       throw std::runtime_error(
-        "sparse_types must be provided if a sparse sensor is "
-        "used.");
+              "sparse_types must be provided if a sparse sensor is "
+              "used.");
     }
     // List of data type names, e.g. distance, angle, depth
     sparse_types_ = sparse_types;
     std::array<std::array<double, 3>, 0> constexpr points;
     // todo would be better to reuse the data by using a not container octree
-    sparse_octree_ = OrthoTree::OctreePointC(points, OCTREE_DEPTH, inspection_space_);
+    sparse_octree_ = OrthoTree::OctreePointC(points, OCTREE_DEPTH, inspection_space_3d_);
     sparse_data_type_to_id_ = std::map<std::string, int>();
     for (uint64_t i = 0; i < sparse_types_.size(); i++) {
       sparse_data_type_to_id_[sparse_types_[i]] = i;
@@ -67,10 +72,11 @@ Inspection::Inspection(
       same_min_max_colors_ = true;
     } else if (
       sparse_color_min_values.size() != sparse_types_.size() ||
-      sparse_color_max_values.size() != sparse_types_.size()) {
+      sparse_color_max_values.size() != sparse_types_.size())
+    {
       throw std::runtime_error(
-        "sparse_min_color_values and sparse_max_color_values must be the same size as "
-        "sparse_types");
+              "sparse_min_color_values and sparse_max_color_values must be the same size as "
+              "sparse_types");
     } else {
       same_min_max_colors_ = false;
       sparse_color_min_values_ = sparse_color_min_values;
@@ -87,17 +93,29 @@ Inspection::Inspection(
     intrinsic_recieved_ =
       std::vector<bool>(1);  // todo are these automatically initialized to false?
     crop_box_ = open3d::geometry::AxisAlignedBoundingBox(
-      Eigen::Vector3d(inspection_space_min[0], inspection_space_min[1], inspection_space_min[2]),
-      Eigen::Vector3d(inspection_space_max[0], inspection_space_max[1], inspection_space_max[2]));
+      Eigen::Vector3d(
+        inspection_space_3d_min[0], inspection_space_3d_min[1],
+        inspection_space_3d_min[2]),
+      Eigen::Vector3d(
+        inspection_space_3d_max[0], inspection_space_3d_max[1],
+        inspection_space_3d_max[2]));
     // todo we might also want to have multiple TSDF volumes for different dense sensor types,
     // but also use multiple dense sensors of the same type for the same tsdf
     // todo don't hardcode the parameters of the tsdf volume
     tsdf_volume_ = std::make_shared<open3d::pipelines::integration::ScalableTSDFVolume>(
       4.0 / 512.0, 0.04, open3d::pipelines::integration::TSDFVolumeColorType::RGB8);
     // todo this octree would also need to store orientation
-    std::array<std::array<double, 3>, 0> constexpr points;
-    dense_octree_ = OrthoTree::OctreePointC(points, OCTREE_DEPTH, inspection_space_);
+    std::array<std::array<double, 6>, 0> constexpr poses;
+    dense_posetree_ = OrthoTree::TreePointPoseND<6, double>();
+    dense_posetree_.Create(
+      dense_posetree_, poses, OCTREE_DEPTH, inspection_space_6d_,
+      MAX_POSES_IN_LEAF);
     dense_data_count_ = 0;
+
+    //Hard coded path until all in one save capability
+    db_options_.create_if_missing = true;
+    rocksdb::Status s = rocksdb::DB::Open(db_options_, "/tmp/vinspect_dense", &db_);
+    assert(s.ok());
   }
 
   reference_mesh_ = mesh;
@@ -110,6 +128,7 @@ Inspection::Inspection(
     // robot_states_ = std::vector<<std::vector<double>>(10000);
   }
 
+  mtx_ = new std::mutex(); //Note: Does this also need to be in the other constructor?
   finished_ = false;
 }
 
@@ -117,12 +136,16 @@ Inspection::Inspection(
   std::vector<std::string> sensor_types_names, std::vector<std::string> sparse_types,
   std::vector<std::string> sparse_units, std::vector<std::string> joint_names,
   std::string mesh_file_path, std::tuple<int, int> dense_sensor_resolution, std::string save_path,
-  std::array<double, 3> inspection_space_min, std::array<double, 3> inspection_space_max,
+  std::array<double, 3> inspection_space_3d_min, std::array<double, 3> inspection_space_3d_max,
+  std::array<double,
+  6> inspection_space_6d_min, std::array<double, 6> inspection_space_6d_max,
   std::vector<double> sparse_color_min_values, std::vector<double> sparse_color_max_values)
 : Inspection(
     stringsToTypes(sensor_types_names), sparse_types, sparse_units, joint_names,
-    meshFromPath(mesh_file_path), dense_sensor_resolution, save_path, inspection_space_min,
-    inspection_space_max, sparse_color_min_values, sparse_color_max_values)
+    meshFromPath(
+      mesh_file_path), dense_sensor_resolution, save_path, inspection_space_3d_min,
+    inspection_space_3d_max, inspection_space_6d_min, inspection_space_6d_max, sparse_color_min_values,
+    sparse_color_max_values)
 {
 }
 
@@ -147,11 +170,11 @@ void Inspection::startSaving()
       file << base_data_string;
       file.close();
     }
-    saving_thread_ = new std::thread([this] { appendSave(save_path_); });
+    saving_thread_ = new std::thread([this] {appendSave(save_path_);});
   }
 }
 
-open3d::geometry::TriangleMesh Inspection::getMesh() const { return reference_mesh_; }
+open3d::geometry::TriangleMesh Inspection::getMesh() const {return reference_mesh_;}
 
 int Inspection::getClosestSparseMeasurement(const std::array<double, 3> & position) const
 {  // todo should return unsigned long
@@ -179,7 +202,9 @@ std::vector<uint64_t> Inspection::getSparseMeasurementsInRadius(
         euclideanDistance(
           position[0], position[1], position[2], sparse_position_[id][0], sparse_position_[id][1],
           sparse_position_[id][2]) < radius)
+      {
         ids_in_radius.push_back(id);
+      }
     }
     return ids_in_radius;
   }
@@ -203,8 +228,69 @@ std::vector<double> Inspection::getValuesForIds(
   return values;
 }
 
-std::vector<double> Inspection::getDenseAtPosition(
-  const std::array<double, 3> & position, double radius) const
+std::array<double, 6> Inspection::getDensePoseFromId(const int id) const
+{
+  std::string retriveKey = "D_1_" + std::to_string(id);
+  std::string retrivedStringData;
+  std::array<double, 6> pose;
+  db_->Get(rocksdb::ReadOptions(), retriveKey, &retrivedStringData);
+  Dense retrivedEntry;
+  if (retrivedEntry.ParseFromString(retrivedStringData)) {
+    for (size_t i = 0; i < retrivedEntry.pose_size(); i++) {
+      pose[i] = retrivedEntry.pose(i);
+    }
+  }
+  return pose;
+}
+
+std::vector<std::vector<std::array<u_int8_t, 3>>> Inspection::getImageFromId(const int id) const
+{
+  std::string retriveKey = "D_1_" + std::to_string(id);
+  std::string retrivedStringData;
+  std::vector<std::vector<std::array<u_int8_t, 3>>> image;
+  db_->Get(rocksdb::ReadOptions(), retriveKey, &retrivedStringData);
+  Dense retrivedEntry;
+  if (retrivedEntry.ParseFromString(retrivedStringData)) {
+    image.resize(
+      get<1>(dense_sensor_resolution_),
+      std::vector<std::array<uint8_t, 3>>(get<0>(dense_sensor_resolution_)));
+
+    int index = 0;
+
+    for (int row = 0; row < get<1>(dense_sensor_resolution_); row++) {
+      for (int col = 0; col < get<0>(dense_sensor_resolution_); col++) {
+        image[row][col] =
+        {retrivedEntry.color_image(index), retrivedEntry.color_image(index + 1),
+          retrivedEntry.color_image(index + 2)};
+        index += 3;
+      }
+    }
+  }
+  return image;
+}
+
+int Inspection::getClosestDenseMeasurement(const std::array<double, 6> & pose) const
+{  // todo should return unsigned long
+  if (dense_pose_.size() == 0) {
+    return -1;
+  } else {
+    return dense_posetree_.GetNearestNeighbors(pose, 1, dense_pose_)[0];
+  }
+}
+
+int Inspection::getClosestDenseMeasurement(const std::array<double, 7> & quat_pose) const
+{  // todo should return unsigned long
+  if (dense_pose_.size() == 0) {
+    return -1;
+  } else {
+    std::array<double, 6> euler_pose = quatToEulerPose(quat_pose);
+    auto res = dense_posetree_.GetNearestNeighbors(euler_pose, 1, dense_pose_);
+    return res[0];
+  }
+}
+
+std::vector<double> Inspection::getDenseAtPose(
+  const std::array<double, 6> & pose, double radius) const
 {
   // make sure there is no code duplication with the sparse version, when
   // implementing this
@@ -220,7 +306,7 @@ void Inspection::addSparseMeasurement(
   const std::array<double, 4> & orientation, const std::vector<double> & values,
   const Eigen::Vector3d & user_color, bool insert_in_octree)
 {
-  if (!isPointInSpace(&inspection_space_, position)) {
+  if (!isPointInSpace(&inspection_space_3d_, position)) {
     std::cout << "Ignoring measurement at (" << position[0] << ", " << position[1] << ","
               << position[2] << ") because it is outside inspection space." << std::endl;
   } else {
@@ -250,8 +336,67 @@ void Inspection::addSparseMeasurement(
   }
 }
 
+std::array<double, 6> Inspection::transformMatrixToPose(const Eigen::Matrix4d & extrinsic_matrix)
+{
+  std::array<double, 6> pose;
+  Eigen::Vector3d translation = extrinsic_matrix.block<3, 1>(0, 3);
+
+  Eigen::Matrix3d rotationMatrix = extrinsic_matrix.block<3, 3>(0, 0);
+
+  Eigen::Vector3d euler_angles = rotationMatrix.eulerAngles(0, 1, 2);
+  pose[0] = translation[0];
+  pose[1] = translation[1];
+  pose[2] = translation[2];
+
+  pose[3] = euler_angles[0];
+  pose[4] = euler_angles[1];
+  pose[5] = euler_angles[2];
+
+  return pose;
+}
+
+std::array<double, 6> Inspection::quatToEulerPose(const std::array<double, 7> quat_pose) const
+{
+  std::array<double, 6> euler_pose;
+
+  Eigen::Quaterniond quat(quat_pose[6], quat_pose[3], quat_pose[4], quat_pose[5]);
+  Eigen::Vector3d euler_angles = quat.toRotationMatrix().eulerAngles(0, 1, 2);
+
+  euler_pose[0] = quat_pose[0];
+  euler_pose[1] = quat_pose[1];
+  euler_pose[2] = quat_pose[2];
+
+  euler_pose[3] = euler_angles[0];
+  euler_pose[4] = euler_angles[1];
+  euler_pose[5] = euler_angles[2];
+
+  return euler_pose;
+}
+
+std::array<double, 7> Inspection::eulerToQuatPose(const std::array<double, 6> euler_pose) const
+{
+  std::array<double, 7> quat_pose;
+
+  Eigen::Quaterniond q;
+  q = Eigen::AngleAxisd(euler_pose[3], Eigen::Vector3d::UnitX()) * Eigen::AngleAxisd(
+    euler_pose[4],
+    Eigen::Vector3d::UnitY()) * Eigen::AngleAxisd(euler_pose[5], Eigen::Vector3d::UnitZ());
+
+  quat_pose[0] = euler_pose[0];
+  quat_pose[1] = euler_pose[1];
+  quat_pose[2] = euler_pose[2];
+
+  quat_pose[3] = q.x();
+  quat_pose[4] = q.y();
+  quat_pose[5] = q.z();
+  quat_pose[6] = q.w();
+
+  return quat_pose;
+}
+
 void Inspection::integrateImage(
-  const open3d::geometry::RGBDImage & image, const int sensor_id, const Eigen::Matrix4d & extrinsic)
+  const open3d::geometry::RGBDImage & image, const int sensor_id,
+  const Eigen::Matrix4d & extrinsic_optical, const Eigen::Matrix4d & extrinsic_world)
 {
   // we can only integrate if we already recieved the intrinsic calibration for this sensor
   if (!intrinsic_recieved_[sensor_id]) {
@@ -259,12 +404,18 @@ void Inspection::integrateImage(
               << " Will not integrate." << std::endl;
     return;
   }
-  tsdf_volume_->Integrate(image, intrinsic_[sensor_id], extrinsic);
-  integrated_frames_++;
+  tsdf_volume_->Integrate(image, intrinsic_[sensor_id], extrinsic_optical);
+  std::array<double, 6> image_pose = transformMatrixToPose(extrinsic_world);
   // todo we should append the images and depth images to the dense octree and save them
-  // self.depth_images.append(data[0]);
-  // self.color_images.append(data[1]);
-  // self.rgb_poses.append(rgb_pose);
+
+  mtx_->lock();
+  dense_posetree_.Insert(dense_data_count_, image_pose, false);
+  dense_image_.push_back(image.color_.data_);
+  dense_depth_image_.push_back(image.depth_.data_);
+  dense_pose_.push_back(image_pose);
+  dense_data_count_++;
+  integrated_frames_++;
+  mtx_->unlock();
 }
 
 std::shared_ptr<open3d::geometry::TriangleMesh> Inspection::extractDenseReconstruction() const
@@ -282,7 +433,10 @@ void Inspection::recreateOctrees()
     sparse_octree_ = OrthoTree::OctreePointC(sparse_position_, OCTREE_DEPTH);
   }
   if (dense_usage_) {
-    dense_octree_ = OrthoTree::OctreePointC(dense_position_, OCTREE_DEPTH);
+    dense_posetree_ = OrthoTree::TreePointPoseND<6, double>();
+    dense_posetree_.Create(
+      dense_posetree_, dense_pose_, OCTREE_DEPTH, inspection_space_6d_,
+      MAX_POSES_IN_LEAF);
   }
 }
 
@@ -310,7 +464,7 @@ void Inspection::clear()
     sparse_octree_.Clear();
     // need to reset the octree space
     std::array<std::array<double, 3>, 0> constexpr points;
-    sparse_octree_ = OrthoTree::OctreePointC(points, OCTREE_DEPTH, inspection_space_);
+    sparse_octree_ = OrthoTree::OctreePointC(points, OCTREE_DEPTH, inspection_space_3d_);
     sparse_timestamp_.clear();
     sparse_sensor_id_.clear();
     sparse_position_.clear();
@@ -323,11 +477,14 @@ void Inspection::clear()
       std::vector<double>(sparse_types_.size(), std::numeric_limits<double>::lowest());
   }
   if (dense_usage_) {
-    std::array<std::array<double, 3>, 0> constexpr points;
-    dense_octree_ = OrthoTree::OctreePointC(points, OCTREE_DEPTH, inspection_space_);
+    std::array<std::array<double, 6>, 0> constexpr poses;
+    dense_posetree_ = OrthoTree::TreePointPoseND<6, double>();
+    dense_posetree_.Create(
+      dense_posetree_, poses, OCTREE_DEPTH, inspection_space_6d_,
+      MAX_POSES_IN_LEAF);
     dense_timestamp_.clear();
     dense_sensor_id_.clear();
-    dense_position_.clear();
+    dense_pose_.clear();
     dense_orientation_.clear();
     dense_image_.clear();
     dense_depth_image_.clear();
@@ -353,15 +510,32 @@ std::string Inspection::baseDataForSave() const
   // todo we could also add a date to the header just to know when it was recorded
   // todo could also add a field to store an arbitrary string as a note or comment
   std::string what_to_write;
-  what_to_write += "Inspection space min: (";
-  what_to_write += std::to_string(inspection_space_.Min[0]) + ", " +
-                   std::to_string(inspection_space_.Min[1]) + ", " +
-                   std::to_string(inspection_space_.Min[2]);
+  what_to_write += "3D Inspection space min: (";
+  what_to_write += std::to_string(inspection_space_3d_.Min[0]) + ", " +
+    std::to_string(inspection_space_3d_.Min[1]) + ", " +
+    std::to_string(inspection_space_3d_.Min[2]);
   what_to_write += ")\n";
-  what_to_write += "Inspection space max: (";
-  what_to_write += std::to_string(inspection_space_.Max[0]) + ", " +
-                   std::to_string(inspection_space_.Max[1]) + ", " +
-                   std::to_string(inspection_space_.Max[2]);
+  what_to_write += "3D Inspection space max: (";
+  what_to_write += std::to_string(inspection_space_3d_.Max[0]) + ", " +
+    std::to_string(inspection_space_3d_.Max[1]) + ", " +
+    std::to_string(inspection_space_3d_.Max[2]);
+  what_to_write += ")\n";
+
+  what_to_write += "6D Inspection space min: (";
+  what_to_write += std::to_string(inspection_space_6d_.Min[0]) + ", " +
+    std::to_string(inspection_space_6d_.Min[1]) + ", " +
+    std::to_string(inspection_space_6d_.Min[2]) + ", " +
+    std::to_string(inspection_space_6d_.Min[3]) + ", " +
+    std::to_string(inspection_space_6d_.Min[4]) + ", " +
+    std::to_string(inspection_space_6d_.Min[5]);
+  what_to_write += ")\n";
+  what_to_write += "6D Inspection space max: (";
+  what_to_write += std::to_string(inspection_space_6d_.Max[0]) + ", " +
+    std::to_string(inspection_space_6d_.Max[1]) + ", " +
+    std::to_string(inspection_space_6d_.Max[2]) + ", " +
+    std::to_string(inspection_space_6d_.Max[3]) + ", " +
+    std::to_string(inspection_space_6d_.Max[4]) + ", " +
+    std::to_string(inspection_space_6d_.Max[5]);
   what_to_write += ")\n";
 
   what_to_write += writeArray("Sensor types", sensor_types_);
@@ -413,12 +587,33 @@ void Inspection::save(const std::string & filepath) const
     if (i % 100 == 0) {
       std::cout << "Processed " << i << "/" << dense_data_count_ << " dense entries." << std::endl;
     }
-    // todo dense data
   }
   std::ofstream file(filepath);
   file << what_to_write;
   file.flush();
   std::cout << "Inspection saved." << std::endl;
+}
+
+std::string Inspection::serializedStructForDenseEntry(
+  int i,
+  std::vector<u_int8_t> color_img,
+  std::vector<u_int8_t> depth_img)
+const
+{
+  //Fill the Protobuf object
+  Dense denseEntry;
+  denseEntry.set_entry_nr(i);
+
+  auto * pose_field = denseEntry.mutable_pose();
+  pose_field->Add(dense_pose_[i].begin(), dense_pose_[i].end());
+
+  auto * color_image_field = denseEntry.mutable_color_image();
+  color_image_field->Add(color_img.begin(), color_img.end());
+
+  auto * depth_image_field = denseEntry.mutable_depth_image();
+  depth_image_field->Add(depth_img.begin(), depth_img.end());
+
+  return denseEntry.SerializeAsString();
 }
 
 void Inspection::appendSave(const std::string & filepath)
@@ -433,7 +628,26 @@ void Inspection::appendSave(const std::string & filepath)
       file << saveStringForSparseEntry(sparse_data_written);
       sparse_data_written++;
     }
-    // todo dense data
+    while (dense_data_written < dense_data_count_ && !(dense_image_.empty()) &&
+      !(dense_depth_image_.empty()))
+    {
+      mtx_->lock();
+      std::vector<u_int8_t> color_img_to_save = dense_image_.front();
+      dense_image_.pop_front();
+
+      std::vector<u_int8_t> depth_img_to_save = dense_depth_image_.front();
+      dense_depth_image_.pop_front();
+
+      // ToDo change "D_1_" to dense_sensor_id_ when its fully integrated
+      db_->Put(
+        rocksdb::WriteOptions(), "D_1_" + std::to_string(
+          dense_data_written),
+        serializedStructForDenseEntry(dense_data_written, color_img_to_save, depth_img_to_save));
+      dense_data_written++;
+      mtx_->unlock();
+      // Note: Both image containers implemented as deque for fast back and front access/deletion
+    }
+
     file.flush();
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
   }
@@ -450,17 +664,36 @@ Inspection load(const std::string filepath)
   std::string line;
   // read the header
   std::getline(f, line);
-  std::vector<std::string> inspection_space_min_strings = splitStringArray(line, "(", ")");
-  std::array<double, 3> inspection_space_min;
-  inspection_space_min[0] = std::stod(inspection_space_min_strings[0]);
-  inspection_space_min[1] = std::stod(inspection_space_min_strings[1]);
-  inspection_space_min[2] = std::stod(inspection_space_min_strings[2]);
+  std::vector<std::string> inspection_space_3d_min_strings = splitStringArray(line, "(", ")");
+  std::array<double, 3> inspection_space_3d_min;
+  inspection_space_3d_min[0] = std::stod(inspection_space_3d_min_strings[0]);
+  inspection_space_3d_min[1] = std::stod(inspection_space_3d_min_strings[1]);
+  inspection_space_3d_min[2] = std::stod(inspection_space_3d_min_strings[2]);
   std::getline(f, line);
-  std::vector<std::string> inspection_space_max_strings = splitStringArray(line, "(", ")");
-  std::array<double, 3> inspection_space_max;
-  inspection_space_max[0] = std::stod(inspection_space_max_strings[0]);
-  inspection_space_max[1] = std::stod(inspection_space_max_strings[1]);
-  inspection_space_max[2] = std::stod(inspection_space_max_strings[2]);
+  std::vector<std::string> inspection_space_3d_max_strings = splitStringArray(line, "(", ")");
+  std::array<double, 3> inspection_space_3d_max;
+  inspection_space_3d_max[0] = std::stod(inspection_space_3d_max_strings[0]);
+  inspection_space_3d_max[1] = std::stod(inspection_space_3d_max_strings[1]);
+  inspection_space_3d_max[2] = std::stod(inspection_space_3d_max_strings[2]);
+
+  std::getline(f, line);
+  std::vector<std::string> inspection_space_6d_min_strings = splitStringArray(line, "(", ")");
+  std::array<double, 6> inspection_space_6d_min;
+  inspection_space_6d_min[0] = std::stod(inspection_space_6d_min_strings[0]);
+  inspection_space_6d_min[1] = std::stod(inspection_space_6d_min_strings[1]);
+  inspection_space_6d_min[2] = std::stod(inspection_space_6d_min_strings[2]);
+  inspection_space_6d_min[3] = std::stod(inspection_space_6d_min_strings[3]);
+  inspection_space_6d_min[4] = std::stod(inspection_space_6d_min_strings[4]);
+  inspection_space_6d_min[5] = std::stod(inspection_space_6d_min_strings[5]);
+  std::getline(f, line);
+  std::vector<std::string> inspection_space_6d_max_strings = splitStringArray(line, "(", ")");
+  std::array<double, 6> inspection_space_6d_max;
+  inspection_space_6d_max[0] = std::stod(inspection_space_6d_max_strings[0]);
+  inspection_space_6d_max[1] = std::stod(inspection_space_6d_max_strings[1]);
+  inspection_space_6d_max[2] = std::stod(inspection_space_3d_max_strings[2]);
+  inspection_space_6d_max[3] = std::stod(inspection_space_6d_max_strings[3]);
+  inspection_space_6d_max[4] = std::stod(inspection_space_6d_max_strings[4]);
+  inspection_space_6d_max[5] = std::stod(inspection_space_6d_max_strings[5]);
 
   std::getline(f, line);
   std::vector<SensorType> sensor_types;
@@ -475,14 +708,18 @@ Inspection load(const std::string filepath)
   std::getline(f, line);
   std::vector<std::string> sparse_color_min_values_strings = splitStringArray(line);
   std::vector<double> sparse_color_min_values;
-  for (std::string value_string : sparse_color_min_values_strings) {
-    sparse_color_min_values.push_back(std::stod(value_string));
+  if (sparse_color_min_values_strings[0] != "") {
+    for (std::string value_string : sparse_color_min_values_strings) {
+      sparse_color_min_values.push_back(std::stod(value_string));
+    }
   }
   std::getline(f, line);
   std::vector<std::string> sparse_color_max_values_strings = splitStringArray(line);
   std::vector<double> sparse_color_max_values;
-  for (std::string value_string : sparse_color_max_values_strings) {
-    sparse_color_max_values.push_back(std::stod(value_string));
+  if (sparse_color_max_values_strings[0] != "") {
+    for (std::string value_string : sparse_color_max_values_strings) {
+      sparse_color_max_values.push_back(std::stod(value_string));
+    }
   }
 
   std::getline(f, line);
@@ -498,7 +735,9 @@ Inspection load(const std::string filepath)
 
   Inspection inspection = Inspection(
     sensor_types, sparse_types, sparse_units, joint_names, mesh, sensor_resolution, filepath,
-    inspection_space_min, inspection_space_max, sparse_color_min_values, sparse_color_max_values);
+    inspection_space_3d_min, inspection_space_3d_max, inspection_space_6d_min,
+    inspection_space_6d_max, sparse_color_min_values,
+    sparse_color_max_values);
 
   std::cout << "Loaded header" << std::endl;
 

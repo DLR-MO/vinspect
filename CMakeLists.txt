@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.5)
 project(vinspect)
 
 set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/")
 
 find_package(ament_cmake REQUIRED) 
 find_package(ament_cmake_python REQUIRED)
@@ -10,6 +11,10 @@ find_package(Python REQUIRED COMPONENTS Interpreter Development)
 find_package(PythonLibs 3 REQUIRED)
 find_package(pybind11 REQUIRED)
 find_package(TBB REQUIRED)
+find_package(Protobuf REQUIRED)
+find_package(rocksdb REQUIRED)
+
+protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS src/dense.proto)
 
 list(APPEND CMAKE_MODULE_PATH "/usr/include/tbb/")
 
@@ -26,26 +31,27 @@ endif()
 
 add_compile_options(-Wall -Wextra -Wpedantic)
 include_directories(include)
-
-set(SOURCES src/inspection.cpp src/utils.cpp src/sparse_mesh.cpp)
+include_directories(${CMAKE_CURRENT_BINARY_DIR}) #ToDo probably better to have all .proto file in one folder and inlcude that instead of ${CMAKE_CURRENT_BINARY_DIR}
+set(SOURCES src/inspection.cpp src/utils.cpp src/sparse_mesh.cpp ${PROTO_SRCS} ${PROTO_HDRS})
 
 add_library(${PROJECT_NAME} SHARED ${SOURCES})
 
-target_link_libraries(${PROJECT_NAME} TBB::tbb OpenMP::OpenMP_CXX)
+target_link_libraries(${PROJECT_NAME} TBB::tbb OpenMP::OpenMP_CXX rocksdb ${PROTOBUF_LIBRARY})
 
 ament_target_dependencies(${PROJECT_NAME}
   ament_cmake
   Open3D
+  rocksdb
 )
-
 
 pybind11_add_module(vinspect_py src/python_bindings.cpp)
 ament_target_dependencies(vinspect_py PUBLIC
   pybind11
   Python3
   Open3D
+  rocksdb
 )
-target_link_libraries(vinspect_py PUBLIC vinspect)
+target_link_libraries(vinspect_py PUBLIC vinspect rocksdb ${PROTOBUF_LIBRARY})
 set_target_properties(vinspect_py PROPERTIES LINKER_LANGUAGE CXX)
 
 if(BUILD_TESTING)
@@ -81,7 +87,9 @@ ament_export_dependencies(pybind11)
 ament_export_dependencies(Python3)
 ament_export_dependencies(TBB)
 ament_export_dependencies(Open3D)
+ament_export_libraries(rocksdb)
 ament_export_libraries(${PROJECT_NAME})
 ament_export_include_directories(include)
-
+ament_export_include_directories(${CMAKE_CURRENT_BINARY_DIR}) #ToDo See line: include_directories(${CMAKE_CURRENT_BINARY_DIR})
+ament_export_include_directories(rocksdb)
 ament_package()
