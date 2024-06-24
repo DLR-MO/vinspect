@@ -48,13 +48,16 @@ PYBIND11_MODULE(vinspect_py, m)
     py::init<
       std::vector<std::string>, std::vector<std::string>, std::vector<std::string>,
       std::vector<std::string>, std::string, std::tuple<int, int>, std::string,
-      std::array<double, 3>, std::array<double, 3>, std::vector<double>, std::vector<double>>(),
+      std::array<double, 3>, std::array<double, 3>, std::array<double, 6>, std::array<double, 6>,
+      std::vector<double>, std::vector<double>>(),
     py::arg("sensor_types_names"), py::arg("sparse_types") = std::vector<std::string>(),
     py::arg("sparse_units") = std::vector<std::string>(),
     py::arg("joint_names") = std::vector<std::string>(), py::arg("mesh_file_path") = "",
     py::arg("dense_sensor_resolution") = std::tuple<int, int>(), py::arg("save_path") = "",
-    py::arg("inspection_space_min") = std::array<double, 3>(),
-    py::arg("inspection_space_max") = std::array<double, 3>(),
+    py::arg("inspection_space_3d_min") = std::array<double, 3>(),
+    py::arg("inspection_space_3d_max") = std::array<double, 3>(),
+    py::arg("inspection_space_6d_min") = std::array<double, 6>(),
+    py::arg("inspection_space_6d_max") = std::array<double, 6>(),
     py::arg("sparse_min_values") = std::vector<double>(),
     py::arg("sparse_max_values") = std::vector<double>())
   .def("add_sparse_measurement", &Inspection::addSparseMeasurement)

@@ -1,0 +1,8 @@
+syntax = "proto3";
+
+message Dense{
+    int32 entry_nr = 1;
+    repeated float pose = 2;
+    repeated int32 color_image = 3;
+    repeated int32 depth_image = 4;
+}
