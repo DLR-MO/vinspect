@@ -90,6 +90,6 @@ ament_export_dependencies(Open3D)
 ament_export_libraries(rocksdb)
 ament_export_libraries(${PROJECT_NAME})
 ament_export_include_directories(include)
-ament_export_include_directories(${CMAKE_CURRENT_BINARY_DIR}) #ToDo See line: include_directories(${CMAKE_CURRENT_BINARY_DIR})
+ament_export_include_directories(${CMAKE_CURRENT_BINARY_DIR}) #ToDo See line: 34
 ament_export_include_directories(rocksdb)
 ament_package()

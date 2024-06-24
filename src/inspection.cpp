@@ -128,7 +128,7 @@ Inspection::Inspection(
     // robot_states_ = std::vector<<std::vector<double>>(10000);
   }
 
-  mtx_ = new std::mutex(); //Note: Does this also need to be in the other constructor?
+  mtx_ = new std::mutex();
   finished_ = false;
 }
 
