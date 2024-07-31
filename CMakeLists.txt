@@ -1,7 +1,8 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.15)
 project(vinspect)
 
 set(CMAKE_CXX_STANDARD 20)
+set(PYBIND11_FINDPYTHON ON)
 
 find_package(ament_cmake REQUIRED) 
 find_package(ament_cmake_python REQUIRED)
