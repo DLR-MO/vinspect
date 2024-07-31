@@ -1,7 +1,8 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.15)
 project(vinspect)
 
 set(CMAKE_CXX_STANDARD 20)
+set(PYBIND11_FINDPYTHON ON)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/")
 
 find_package(ament_cmake REQUIRED) 
