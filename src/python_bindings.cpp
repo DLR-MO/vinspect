@@ -58,7 +58,10 @@ PYBIND11_MODULE(vinspect_py, m)
     py::arg("sparse_min_values") = std::vector<double>(),
     py::arg("sparse_max_values") = std::vector<double>())
   .def("add_sparse_measurement", &Inspection::addSparseMeasurement)
+  .def("extract_dense_reconstruction", &Inspection::extractDenseReconstruction)
+  .def("finish", &Inspection::finish)
   .def("get_closest_sparse_measurement", &Inspection::getClosestSparseMeasurement)
+  .def("get_integrated_images_count", &Inspection::getIntegratedImagesCount)
   .def("get_sparse_measurements_in_radius", &Inspection::getSparseMeasurementsInRadius)
   .def("get_sparse_data_count", &Inspection::getSparseDataCount)
   .def("get_sparse_position", &Inspection::getSparsePosition)
@@ -66,8 +69,11 @@ PYBIND11_MODULE(vinspect_py, m)
   .def("get_sparse_value", &Inspection::getSparseValue)
   .def("get_sparse_user_color", &Inspection::getSparseUserColor)
   .def("get_sparse_timestamp", &Inspection::getSparseTimestamp)
+  .def("integrate_image", &Inspection::integrateImage)  
+  .def("get_mesh", &Inspection::getMesh)
+  .def("reinitialize_TSDF", &Inspection::reinitializeTSDF)
   .def("save", &Inspection::save)
-  .def("finish", &Inspection::finish);
+  .def("set_intrinsic", &Inspection::setIntrinsic);
   m.def("load", &load);
   m.def("show_colored_mesh", &showColoredMesh);
   m.def("compute_colored_mesh", &computeColoredMesh);
