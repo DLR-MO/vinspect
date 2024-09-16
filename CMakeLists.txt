@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.15)
 project(vinspect)
 
+# TODO This is just currently necessary to make Open3D work on Ubuntu 24.04. Remove in the future
+set(CMAKE_C_COMPILER "gcc-11")
+set(CMAKE_CXX_COMPILER "g++-11")
+
 set(CMAKE_CXX_STANDARD 20)
 set(PYBIND11_FINDPYTHON ON)
 

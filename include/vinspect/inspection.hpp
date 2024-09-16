@@ -191,6 +191,12 @@ public:
     intrinsic_recieved_[sensor_id] = true;
   }
 
+  void setIntrinsic2( int sensor_id, int width, int height, double fx, double fy, double cx, double cy)
+  {
+    intrinsic_[sensor_id] = open3d::camera::PinholeCameraIntrinsic(width, height, fx, fy, cx, cy);
+    intrinsic_recieved_[sensor_id] = true;
+  }
+
   std::vector<std::string> getSparseUnits() { return sparse_units_; }
 
   uint64_t getIntegratedImagesCount() { return integrated_frames_; }

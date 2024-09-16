@@ -81,9 +81,11 @@ Inspection::Inspection(
   integrated_frames_ = 0;
   if (dense_usage_) {
     dense_sensor_resolution_ = dense_sensor_resolution;
+    // TODO check if we really need to save the dense_sensor_resolution
     // todo the camera infos should be provided during construction
     // todo should use dense_sensor_resolution_.size());
-    intrinsic_ = std::vector<open3d::camera::PinholeCameraIntrinsic>(1);
+    // todo this sensor_types.size() - sparse_types.size() is not so nice
+    intrinsic_ = std::vector<open3d::camera::PinholeCameraIntrinsic>(sensor_types.size() - sparse_types.size());
     intrinsic_recieved_ =
       std::vector<bool>(1);  // todo are these automatically initialized to false?
     crop_box_ = open3d::geometry::AxisAlignedBoundingBox(

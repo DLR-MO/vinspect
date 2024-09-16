@@ -73,7 +73,8 @@ PYBIND11_MODULE(vinspect_py, m)
   .def("get_mesh", &Inspection::getMesh)
   .def("reinitialize_TSDF", &Inspection::reinitializeTSDF)
   .def("save", &Inspection::save)
-  .def("set_intrinsic", &Inspection::setIntrinsic);
+  .def("set_intrinsic", &Inspection::setIntrinsic)
+  .def("set_intrinsic2", &Inspection::setIntrinsic2);
   m.def("load", &load);
   m.def("show_colored_mesh", &showColoredMesh);
   m.def("compute_colored_mesh", &computeColoredMesh);
