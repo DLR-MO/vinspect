@@ -33,6 +33,16 @@
 #include "vinspect/utils.hpp"
 #include "dense.pb.h"
 
+#include <unsupported/Eigen/EulerAngles>
+/*
+The unsupported implementation for Euler angles is used in this software because the standard 
+implementation uses the ranges [0:pi]x[-pi:pi]x[-pi:pi], but with these ranges ambiguous 
+representations can be achieved. The unsupported implementation overcomes this 
+problem by using the ranges [-pi, pi], [-pi/2, pi/2], [-pi, pi].
+
+https://eigen.tuxfamily.org/dox/unsupported/group__EulerAngles__Module.html
+*/
+
 #define OCTREE_DEPTH 10
 #define MAX_POSES_IN_LEAF 21
 

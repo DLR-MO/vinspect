@@ -342,15 +342,15 @@ std::array<double, 6> Inspection::transformMatrixToPose(const Eigen::Matrix4d & 
   Eigen::Vector3d translation = extrinsic_matrix.block<3, 1>(0, 3);
 
   Eigen::Matrix3d rotationMatrix = extrinsic_matrix.block<3, 3>(0, 0);
+  Eigen::EulerAnglesXYZd euler_angles(rotationMatrix);
 
-  Eigen::Vector3d euler_angles = rotationMatrix.eulerAngles(0, 1, 2);
   pose[0] = translation[0];
   pose[1] = translation[1];
   pose[2] = translation[2];
 
-  pose[3] = euler_angles[0];
-  pose[4] = euler_angles[1];
-  pose[5] = euler_angles[2];
+  pose[3] = euler_angles.alpha();
+  pose[4] = euler_angles.beta();
+  pose[5] = euler_angles.gamma();
 
   return pose;
 }
@@ -360,15 +360,15 @@ std::array<double, 6> Inspection::quatToEulerPose(const std::array<double, 7> qu
   std::array<double, 6> euler_pose;
 
   Eigen::Quaterniond quat(quat_pose[6], quat_pose[3], quat_pose[4], quat_pose[5]);
-  Eigen::Vector3d euler_angles = quat.toRotationMatrix().eulerAngles(0, 1, 2);
+  Eigen::EulerAnglesXYZd euler_angles(quat.toRotationMatrix());
 
   euler_pose[0] = quat_pose[0];
   euler_pose[1] = quat_pose[1];
   euler_pose[2] = quat_pose[2];
 
-  euler_pose[3] = euler_angles[0];
-  euler_pose[4] = euler_angles[1];
-  euler_pose[5] = euler_angles[2];
+  euler_pose[3] = euler_angles.alpha();
+  euler_pose[4] = euler_angles.beta();
+  euler_pose[5] = euler_angles.gamma();
 
   return euler_pose;
 }
