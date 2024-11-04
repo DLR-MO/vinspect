@@ -35,9 +35,9 @@
 
 #include <unsupported/Eigen/EulerAngles>
 /*
-The unsupported implementation for Euler angles is used in this software because the standard 
-implementation uses the ranges [0:pi]x[-pi:pi]x[-pi:pi], but with these ranges ambiguous 
-representations can be achieved. The unsupported implementation overcomes this 
+The unsupported implementation for Euler angles is used in this software because the standard
+implementation uses the ranges [0:pi]x[-pi:pi]x[-pi:pi], but with these ranges ambiguous
+representations can be achieved. The unsupported implementation overcomes this
 problem by using the ranges [-pi, pi], [-pi/2, pi/2], [-pi, pi].
 
 https://eigen.tuxfamily.org/dox/unsupported/group__EulerAngles__Module.html
@@ -142,10 +142,10 @@ public:
   int getClosestDenseMeasurement(const std::array<double, 6> & pose) const;
 
   /**
-  * Returns the id of the closest sparse measurment to the given position.
-  * @param pose 7d quaternion pose
-  * @return id of the closest sparse measurement
-  */
+   * Returns the id of the closest sparse measurment to the given position.
+   * @param pose 7d quaternion pose
+   * @return id of the closest sparse measurement
+   */
   int getClosestDenseMeasurement(const std::array<double, 7> & quat_pose) const;
 
   inline uint64_t getDenseDataCount() const {return dense_data_count_;}
@@ -167,16 +167,23 @@ public:
   std::vector<std::vector<std::array<u_int8_t, 3>>> getImageFromId(const int id) const;
 
   /**
- * Returns the pose which is retrived from the database based on the given id.
- * @param id id of the datapoint in the database
- * @return image as a std::vector<std::vector<uint8_t>>
- */
+   * Returns the pose which is retrived from the database based on the given id.
+   * @param id id of the datapoint in the database
+   * @return image as a std::vector<std::vector<uint8_t>>
+   */
   std::array<double, 6> getDensePoseFromId(const int id) const;
+
+  /**
+   * Returns a percentage of all poses available.
+   * @param percentage percentage poses requested
+   * @return multiple arrays of 6D poses in a vector, as a std::vector<std::array<double, 6>>
+   */
+  std::vector<std::array<double, 6>> getMultiDensePoses(const int percentage) const;
 
   /**
    * Adds a new data point to the inspection
    * @param position 3d position
-   *@param values numpy array of data values
+   * @param values numpy array of data values
    * @param raw_id id of the raw measurements
    * @param insert_in_octree can be set to false if the octree is later recreated to improve performance
    */

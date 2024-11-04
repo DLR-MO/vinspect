@@ -243,6 +243,31 @@ std::array<double, 6> Inspection::getDensePoseFromId(const int id) const
   return pose;
 }
 
+std::vector<std::array<double, 6>> Inspection::getMultiDensePoses(const int percentage) const
+{
+  std::vector<std::array<double, 6>> all_poses;
+  float float_percentage = percentage / 100.0;
+  float x = dense_data_count_ * float_percentage;
+  float entries_to_skip = dense_data_count_ / x;
+  
+  for (size_t i = 0; i < dense_data_count_; i = i + entries_to_skip)
+  {
+    std::string retriveKey = "D_1_" + std::to_string(i);
+    std::string retrivedStringData;
+    std::array<double, 6> pose;
+    db_->Get(rocksdb::ReadOptions(), retriveKey, &retrivedStringData);
+    Dense retrivedEntry;
+    if (retrivedEntry.ParseFromString(retrivedStringData)) {
+      for (size_t j = 0; j < retrivedEntry.pose_size(); j++) {
+        pose[j] = retrivedEntry.pose(j);
+      }
+      all_poses.push_back(pose);
+    }
+  }
+
+  return all_poses;
+}
+
 std::vector<std::vector<std::array<u_int8_t, 3>>> Inspection::getImageFromId(const int id) const
 {
   std::string retriveKey = "D_1_" + std::to_string(id);
