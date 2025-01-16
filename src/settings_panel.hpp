@@ -28,6 +28,7 @@
 #include <rviz_common/display_context.hpp>
 #include <rviz_common/panel.hpp>
 #include <std_msgs/msg/string.hpp>
+#include <std_msgs/msg/int32.hpp>
 #include <std_srvs/srv/empty.hpp>
 
 #include "vinspect_msgs/msg/settings.hpp"
@@ -76,11 +77,15 @@ protected:
 
   QLineEdit * file_path_;
 
-  std::shared_ptr<rclcpp::Node> requester_node_;
-  rclcpp::Publisher<vinspect_msgs::msg::Settings>::SharedPtr requester_publisher_;
+   QLineEdit * multi_pose_percentage;
+
+  std::shared_ptr<rclcpp::Node> plugin_node_;
+  rclcpp::Publisher<vinspect_msgs::msg::Settings>::SharedPtr settings_publisher_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr dense_req_publisher_;
+  rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr dense_available_poses_publisher_;
   rclcpp::Client<vinspect_msgs::srv::StartReconstruction>::SharedPtr start_client_;
   rclcpp::Client<std_srvs::srv::Empty>::SharedPtr stop_client_;
-  vinspect_msgs::msg::Settings settings_msg_;
+  vinspect_msgs::msg::Settings sparse_settings_msg_;
 
 protected Q_SLOTS:
   void onObjectButtonClick(const QString & text);
@@ -96,6 +101,8 @@ protected Q_SLOTS:
   void clearClick(const std::reference_wrapper<QLineEdit *> input_objects[]);
   void requestStartClick();
   void requestStopClick();
+  void denseReqClick();
+  void denseAvailablePosesClick();
 };
 
 }  // namespace plugins
