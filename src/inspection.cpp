@@ -106,7 +106,7 @@ Inspection::Inspection(
       4.0 / 512.0, 0.04, open3d::pipelines::integration::TSDFVolumeColorType::RGB8);
     // todo this octree would also need to store orientation
     std::array<std::array<double, 6>, 0> constexpr poses;
-    dense_posetree_ = OrthoTree::TreePointPoseND<6, double>();
+    dense_posetree_ = OrthoTree::TreePointPoseND<6, {0, 0, 0, 1, 1, 1}, std::ratio<1, 2>, double>();
     dense_posetree_.Create(
       dense_posetree_, poses, OCTREE_DEPTH, inspection_space_6d_,
       MAX_POSES_IN_LEAF);
@@ -458,7 +458,7 @@ void Inspection::recreateOctrees()
     sparse_octree_ = OrthoTree::OctreePointC(sparse_position_, OCTREE_DEPTH);
   }
   if (dense_usage_) {
-    dense_posetree_ = OrthoTree::TreePointPoseND<6, double>();
+    dense_posetree_ = OrthoTree::TreePointPoseND<6, {0, 0, 0, 1, 1, 1}, std::ratio<1, 2>, double>();
     dense_posetree_.Create(
       dense_posetree_, dense_pose_, OCTREE_DEPTH, inspection_space_6d_,
       MAX_POSES_IN_LEAF);
@@ -503,7 +503,7 @@ void Inspection::clear()
   }
   if (dense_usage_) {
     std::array<std::array<double, 6>, 0> constexpr poses;
-    dense_posetree_ = OrthoTree::TreePointPoseND<6, double>();
+    dense_posetree_ = OrthoTree::TreePointPoseND<6, {0, 0, 0, 1, 1, 1}, std::ratio<1, 2>, double>();
     dense_posetree_.Create(
       dense_posetree_, poses, OCTREE_DEPTH, inspection_space_6d_,
       MAX_POSES_IN_LEAF);

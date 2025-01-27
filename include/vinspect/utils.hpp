@@ -17,7 +17,7 @@
 #include "open3d/Open3D.h"
 #include "open3d/geometry/TriangleMesh.h"
 #include "open3d/io/TriangleMeshIO.h"
-#include "vinspect/Octree/octree.h"
+#include "vinspect/pose_tree/octree.h"
 namespace vinspect
 {
 
