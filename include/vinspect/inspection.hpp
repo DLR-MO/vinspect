@@ -28,8 +28,8 @@
 #include "open3d/geometry/TriangleMesh.h"
 #include "open3d/io/ModelIO.h"
 #include "open3d/pipelines/integration/TSDFVolume.h"
-#include "vinspect/Octree/octree.h"
-#include "vinspect/Octree/octree_container.h"
+#include "vinspect/pose_tree/octree.h"
+#include "vinspect/pose_tree/octree_container.h"
 #include "vinspect/utils.hpp"
 #include "dense.pb.h"
 
@@ -302,7 +302,7 @@ private:
   std::tuple<int, int> dense_sensor_resolution_;
   std::string save_path_;
   OrthoTree::OctreePointC sparse_octree_;
-  OrthoTree::TreePointPoseND<6, double> dense_posetree_;
+  OrthoTree::TreePointPoseND<6, {0, 0, 0, 1, 1, 1}, std::ratio<1, 2>, double> dense_posetree_;
   std::map<std::string, int> sparse_data_type_to_id_;
   std::vector<double> sparse_timestamp_, dense_timestamp_;
   std::vector<int> sparse_sensor_id_, dense_sensor_id_;
