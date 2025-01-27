@@ -1,3 +1,0 @@
-[submodule "include/vinspect/Octree"]
-	path = include/vinspect/Octree
-	url = https://github.com/LeweC/pose_tree.git
