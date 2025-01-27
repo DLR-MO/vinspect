@@ -1,0 +1,3 @@
+[submodule "include/vinspect/pose_tree"]
+	path = include/vinspect/pose_tree
+	url = https://github.com/LeweC/pose_tree.git
