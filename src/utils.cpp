@@ -81,7 +81,9 @@ std::string vectorToString(const Eigen::Vector3d & vector)
 open3d::geometry::TriangleMesh meshFromPath(const std::string & mesh_file_path)
 {
   open3d::geometry::TriangleMesh mesh;
-  if (!open3d::io::ReadTriangleMesh(mesh_file_path, mesh)) {
+  if (mesh_file_path.empty()) {
+    return mesh;
+  }else if (!open3d::io::ReadTriangleMesh(mesh_file_path, mesh)) {
     throw std::runtime_error("Cannot read mesh file: " + mesh_file_path);
   }
   return mesh;
