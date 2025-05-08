@@ -37,6 +37,7 @@ Additionally, there are Python bindings which allow you integration into Python 
 
 Beware that Vinspect depends on the pose_tree library which is included as a git submodule and you need to pull this accordingly(`git submodule init && git submodule update`).
 You will need to have Open3D installed on your system ([Open3D install instructions](https://www.open3d.org/docs/release/compilation.html)). 
+You also need to have RocksDB and Eigen3 installed (on Ubuntu you can run `sudo apt install librocksdb-dev libeigen3-dev`).
 
 You can intantiate an object of the `Inspection` class and specify what types of sensors you want to use in the constructor.
 Afterward, you can add data, visualize it and access it (see following sections).
