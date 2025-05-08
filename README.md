@@ -35,7 +35,7 @@ We recommend using Vinspect together with the ROS2 interface that we provide (se
 If you prefer to use it without the ROS2 interface, you can include it into your project like any other C++ library.
 Additionally, there are Python bindings which allow you integration into Python code.
 
-Beware that the octree library is included as a git submodule and you need to pull this accordingly(`git submodule init && git submodule update`).
+Beware that Vinspect depends on the pose_tree library which is included as a git submodule and you need to pull this accordingly(`git submodule init && git submodule update`).
 You will need to have Open3D installed on your system ([Open3D install instructions](https://www.open3d.org/docs/release/compilation.html)). 
 
 You can intantiate an object of the `Inspection` class and specify what types of sensors you want to use in the constructor.
