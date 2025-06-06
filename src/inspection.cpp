@@ -87,11 +87,9 @@ Inspection::Inspection(
   integrated_frames_ = 0;
   if (dense_usage_) {
     dense_sensor_resolution_ = dense_sensor_resolution;
-    // TODO check if we really need to save the dense_sensor_resolution
     // todo the camera infos should be provided during construction
-    // todo should use dense_sensor_resolution_.size());
-    // todo this sensor_types.size() - sparse_types.size() is not so nice
-    intrinsic_ = std::vector<open3d::camera::PinholeCameraIntrinsic>(sensor_types.size() - sparse_types.size());
+    intrinsic_ =
+      std::vector<open3d::camera::PinholeCameraIntrinsic>(dense_sensor_resolution_.size());
     intrinsic_recieved_ =
       std::vector<bool>(1);  // todo are these automatically initialized to false?
     crop_box_ = open3d::geometry::AxisAlignedBoundingBox(
@@ -146,8 +144,8 @@ Inspection::Inspection(
     stringsToTypes(sensor_types_names), sparse_types, sparse_units, joint_names,
     meshFromPath(
       mesh_file_path), dense_sensor_resolution, save_path, inspection_space_3d_min,
-    inspection_space_3d_max, inspection_space_6d_min, inspection_space_6d_max, sparse_color_min_values,
-    sparse_color_max_values)
+    inspection_space_3d_max, inspection_space_6d_min, inspection_space_6d_max,
+    sparse_color_min_values, sparse_color_max_values)
 {
 }
 
@@ -251,9 +249,8 @@ std::vector<std::array<double, 6>> Inspection::getMultiDensePoses(const int perc
   float float_percentage = percentage / 100.0;
   float x = dense_data_count_ * float_percentage;
   float entries_to_skip = dense_data_count_ / x;
-  
-  for (size_t i = 0; i < dense_data_count_; i = i + entries_to_skip)
-  {
+
+  for (size_t i = 0; i < dense_data_count_; i = i + entries_to_skip) {
     std::string retriveKey = "D_1_" + std::to_string(i);
     std::string retrivedStringData;
     std::array<double, 6> pose;
