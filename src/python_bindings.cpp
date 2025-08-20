@@ -97,7 +97,7 @@ void integrateImagePy(Inspection inspection,
                                       dept_img_ptr->height_);
   */
   std::shared_ptr<open3d::geometry::RGBDImage> rgbd = open3d::geometry::RGBDImage::CreateFromColorAndDepth(color_img, depth_img, depth_scale, depth_trunc, false);
-  open3d::visualization::DrawGeometries({rgbd}, "Image");
+  //open3d::visualization::DrawGeometries({rgbd}, "Image");
   inspection.integrateImage(*rgbd.get(), sensor_id, extrinsic_optical, extrinsic_world);  
 }
 

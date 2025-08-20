@@ -31,11 +31,13 @@ Inspection::Inspection(
   sparse_usage_ = false;
   dense_usage_ = false;
   dense_type_ = SensorType::RGB;
+  int number_dense_sensors = 0;
   for (auto sensor_type : sensor_types_) {
     if (sensor_type == SensorType::SPARSE) {
       sparse_usage_ = true;
     } else {
       dense_usage_ = true;
+      number_dense_sensors++;
       // todo this does not really make sense. what about the other types
       if (dense_type_ == SensorType::RGB) {
         dense_type_ = sensor_type;
@@ -86,12 +88,12 @@ Inspection::Inspection(
 
   integrated_frames_ = 0;
   if (dense_usage_) {
+    //todo would be good to handle sensors with different resolutions
     dense_sensor_resolution_ = dense_sensor_resolution;
     // todo the camera infos should be provided during construction
     intrinsic_ =
-      std::vector<open3d::camera::PinholeCameraIntrinsic>(1); //TODO should be able to handle different sensors with different calibrations
-    intrinsic_recieved_ =
-      std::vector<bool>(1);  // todo are these automatically initialized to false?
+      std::vector<open3d::camera::PinholeCameraIntrinsic>(number_dense_sensors); //TODO should be able to handle different sensors with different calibrations
+    intrinsic_recieved_ = std::vector<bool>(number_dense_sensors);  // todo are these automatically initialized to false?
     crop_box_ = open3d::geometry::AxisAlignedBoundingBox(
       Eigen::Vector3d(
         inspection_space_3d_min[0], inspection_space_3d_min[1],
