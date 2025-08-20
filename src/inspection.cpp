@@ -89,7 +89,7 @@ Inspection::Inspection(
     dense_sensor_resolution_ = dense_sensor_resolution;
     // todo the camera infos should be provided during construction
     intrinsic_ =
-      std::vector<open3d::camera::PinholeCameraIntrinsic>(dense_sensor_resolution_.size());
+      std::vector<open3d::camera::PinholeCameraIntrinsic>(1); //TODO should be able to handle different sensors with different calibrations
     intrinsic_recieved_ =
       std::vector<bool>(1);  // todo are these automatically initialized to false?
     crop_box_ = open3d::geometry::AxisAlignedBoundingBox(
@@ -112,10 +112,13 @@ Inspection::Inspection(
       MAX_POSES_IN_LEAF);
     dense_data_count_ = 0;
 
-    //Hard coded path until all in one save capability
+    //TODO Hard coded path until all in one save capability
     db_options_.create_if_missing = true;
-    rocksdb::Status s = rocksdb::DB::Open(db_options_, "/tmp/vinspect_dense", &db_);
-    assert(s.ok());
+    std::string rocksdb_file = "/tmp/vinspect_dense";
+    rocksdb::Status s = rocksdb::DB::Open(db_options_, rocksdb_file, &db_);    
+    if(!s.ok()){
+      throw std::runtime_error("Could not open " + rocksdb_file + ". Maybe the file exists and has wrong permissions.");
+    }
   }
 
   reference_mesh_ = mesh;
@@ -473,9 +476,10 @@ void Inspection::reinitializeTSDF(double voxel_length, double sdf_trunc)
 void Inspection::clear()
 {
   // end saving thread
-  finished_ = true;
-  // todo this could lead to an error if we did not create this thread before
-  saving_thread_->join();
+  finished_ = true;  
+  if (save_path_ != "") {
+    saving_thread_->join();
+  }
   finished_ = false;
   // remove the saved file
   if (std::filesystem::exists(save_path_)) {
@@ -524,7 +528,9 @@ void Inspection::clear()
 void Inspection::finish()
 {
   finished_ = true;
-  saving_thread_->join();
+  if (save_path_ != "") {
+    saving_thread_->join();
+  }
 }
 
 std::string Inspection::baseDataForSave() const
