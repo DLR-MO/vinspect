@@ -454,6 +454,11 @@ std::shared_ptr<open3d::geometry::TriangleMesh> Inspection::extractDenseReconstr
   return croped_mesh;
 }
 
+void Inspection::saveDenseReconstruction(std::string filename) const
+{
+  open3d::io::WriteTriangleMesh(filename, *extractDenseReconstruction().get(), true);
+}
+
 void Inspection::recreateOctrees()
 {
   if (sparse_usage_) {

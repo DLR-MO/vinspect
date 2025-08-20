@@ -217,6 +217,7 @@ public:
     const open3d::geometry::RGBDImage & image, const int sensor_id,
     const Eigen::Matrix4d & extrinsic_optical, const Eigen::Matrix4d & extrinsic_world);
   std::shared_ptr<open3d::geometry::TriangleMesh> extractDenseReconstruction() const;
+  void saveDenseReconstruction(std::string filename) const;
 
   inline uint64_t getSparseDataCount() const {return sparse_data_count_;}
   inline const std::vector<std::array<double, 3>> & getSparsePosition() const
