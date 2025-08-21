@@ -20,6 +20,7 @@
 #include <string>
 #include <thread>
 #include <tuple>
+#include <unistd.h>
 #include <vector>
 
 #include "rocksdb/db.h"
@@ -214,10 +215,10 @@ public:
   std::array<double, 7> eulerToQuatPose(const std::array<double, 6> euler_pose) const;
 
   void integrateImage(
-    const open3d::geometry::RGBDImage & image, const int sensor_id,
+    const open3d::geometry::RGBDImage & image, open3d::geometry::Image depth_img, const int sensor_id,
     const Eigen::Matrix4d & extrinsic_optical, const Eigen::Matrix4d & extrinsic_world);
-  std::shared_ptr<open3d::geometry::TriangleMesh> extractDenseReconstruction() const;
-  void saveDenseReconstruction(std::string filename) const;
+  std::shared_ptr<open3d::geometry::TriangleMesh> extractDenseReconstruction();
+  void saveDenseReconstruction(std::string filename);
 
   inline uint64_t getSparseDataCount() const {return sparse_data_count_;}
   inline const std::vector<std::array<double, 3>> & getSparsePosition() const
@@ -297,6 +298,9 @@ private:
    */
   void appendSave(const std::string & filepath);
 
+  open3d::core::Device device_;
+  open3d::t::geometry::VoxelBlockGrid voxel_grid_;
+
   bool finished_;
   uint64_t sparse_data_count_, dense_data_count_;
   std::vector<SensorType> sensor_types_;
@@ -342,6 +346,8 @@ private:
   std::vector<bool> intrinsic_recieved_;
   uint64_t integrated_frames_;
   open3d::geometry::AxisAlignedBoundingBox crop_box_;
+  int time_int_ = 0;
+  int time_int_t_ = 0;
 };
 /**
  * Loads the inspection from a journal file

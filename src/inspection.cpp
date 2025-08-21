@@ -17,6 +17,8 @@ Inspection::Inspection(
   6> inspection_space_6d_min, std::array<double, 6> inspection_space_6d_max,
   std::vector<double> sparse_color_min_values,
   std::vector<double> sparse_color_max_values)
+:   device_("CUDA:0") //todo try cuda and if it does not work use cpu
+  , voxel_grid_()
 {
   save_path_ = save_path;
   inspection_space_3d_.Min = inspection_space_3d_min;
@@ -425,7 +427,7 @@ std::array<double, 7> Inspection::eulerToQuatPose(const std::array<double, 6> eu
 }
 
 void Inspection::integrateImage(
-  const open3d::geometry::RGBDImage & image, const int sensor_id,
+  const open3d::geometry::RGBDImage & image, open3d::geometry::Image depth_img, const int sensor_id,
   const Eigen::Matrix4d & extrinsic_optical, const Eigen::Matrix4d & extrinsic_world)
 {
   // we can only integrate if we already recieved the intrinsic calibration for this sensor
@@ -434,7 +436,50 @@ void Inspection::integrateImage(
               << " Will not integrate." << std::endl;
     return;
   }
+  open3d::utility::Timer int_timer;
+  int_timer.Start();
   tsdf_volume_->Integrate(image, intrinsic_[sensor_id], extrinsic_optical);
+  int_timer.Stop();
+  time_int_ += int_timer.GetDurationInMillisecond();
+
+  //todo can later be replaced with directly creating tensor and using .toDevice
+  open3d::t::geometry::Image depth_t = open3d::t::geometry::Image::FromLegacy(depth_img,
+      device_);
+  open3d::t::geometry::Image color_t = open3d::t::geometry::Image::FromLegacy(image.color_,
+      device_);
+  auto focal_length = intrinsic_[sensor_id].GetFocalLength();
+  auto principal_point = intrinsic_[sensor_id].GetPrincipalPoint();
+  open3d::core::Tensor intrinsic_t = open3d::core::Tensor::Init<double>(
+    {{focal_length.first, 0, principal_point.first},
+      {0, focal_length.second, principal_point.second},
+      {0, 0, 1}});
+  open3d::core::Tensor extrinsic_t =
+    open3d::core::eigen_converter::EigenMatrixToTensor(extrinsic_optical);
+  // no need to scale or truncate as we have already done that when creating the RGBDImage
+  //todo we should directly accept the new image type instead of converting
+
+  //std::cout << "hi" << std::endl;
+  //usleep(100000);
+  open3d::utility::Timer int_timer_t;
+  int_timer_t.Start();
+  open3d::core::Tensor frustum_block_coords;
+  try {
+    //todo it might make sense to restrict these blocks to the cropped area
+    //todo depth_scale and depth_trunc should either be parameters or handled beforehands
+    frustum_block_coords = voxel_grid_.GetUniqueBlockCoordinates(depth_t, intrinsic_t, extrinsic_t,
+        1000.0, 2.0);
+  } catch (const std::runtime_error & e) {
+    std::cout << "no block is touched in tsdf volume, abort integration of this image. please check depth_scale and voxel_size, as well as depth_max of GetUniqueBlockCoordinates" << std::endl;
+    return;
+  }
+  //std::cout << "hi2" << std::endl;
+  //usleep(100000);
+  voxel_grid_.Integrate(frustum_block_coords, depth_t, color_t, intrinsic_t, extrinsic_t); //todo should use other integrate method which uses different intrinsics for depth and color images
+  int_timer_t.Stop();
+  time_int_t_ += int_timer_t.GetDurationInMillisecond();
+  //std::cout << "bye" << std::endl;
+  //usleep(100000);
+
   std::array<double, 6> image_pose = transformMatrixToPose(extrinsic_world);
   // todo we should append the images and depth images to the dense octree and save them
 
@@ -448,16 +493,35 @@ void Inspection::integrateImage(
   mtx_->unlock();
 }
 
-std::shared_ptr<open3d::geometry::TriangleMesh> Inspection::extractDenseReconstruction() const
+std::shared_ptr<open3d::geometry::TriangleMesh> Inspection::extractDenseReconstruction()
 {
   // todo beware of copying the returned mesh
+  open3d::utility::Timer int_timer;
+  int_timer.Start();
   std::shared_ptr<open3d::geometry::TriangleMesh> mesh = tsdf_volume_->ExtractTriangleMesh();
+  int_timer.Stop();
+
+  open3d::utility::Timer int_timer_t;
+  int_timer_t.Start();
+  //todo it should propably be also a parameter how often we want to see one point
+  open3d::geometry::TriangleMesh mesh_d = voxel_grid_.ExtractTriangleMesh(10.0f).ToLegacy();
+  int_timer_t.Stop();
+  mesh =
+    std::make_shared<open3d::geometry::TriangleMesh>(mesh_d);//todo check why we use tolegacy
+
+
+  open3d::visualization::DrawGeometries({mesh});
   // todo maybe give some warning if the whole mesh is cropped to 0 triangles
   std::shared_ptr<open3d::geometry::TriangleMesh> croped_mesh = mesh->Crop(crop_box_);
+
+  open3d::utility::LogInfo("integration: {}, integration t: {}, extraction: {}, extraction t: {}",
+                     float(time_int_) / integrated_frames_, float(time_int_t_) / integrated_frames_,
+      int_timer.GetDurationInMillisecond() / integrated_frames_,
+      int_timer_t.GetDurationInMillisecond() / integrated_frames_);
   return croped_mesh;
 }
 
-void Inspection::saveDenseReconstruction(std::string filename) const
+void Inspection::saveDenseReconstruction(std::string filename)
 {
   open3d::io::WriteTriangleMesh(filename, *extractDenseReconstruction().get(), true);
 }
@@ -477,8 +541,17 @@ void Inspection::recreateOctrees()
 
 void Inspection::reinitializeTSDF(double voxel_length, double sdf_trunc)
 {
+  std::cout << "reinit" << std::endl;
+  usleep(100000);
   tsdf_volume_ = std::make_shared<open3d::pipelines::integration::ScalableTSDFVolume>(
     voxel_length, sdf_trunc, open3d::pipelines::integration::TSDFVolumeColorType::RGB8);
+  voxel_grid_ =
+    open3d::t::geometry::VoxelBlockGrid({"tsdf","weight", "color"},
+        {open3d::core::Dtype::Float32, open3d::core::Dtype::UInt16, open3d::core::Dtype::UInt16},
+        {{1}, {1}, {3}}, voxel_length, 4, 50000, device_); //todo make block count a parameter
+  usleep(100000);
+  std::cout << "reinit finished" << std::endl;
+  //need to clear old cuda cache, otherwise the TSDF will be in there twice
 }
 
 void Inspection::clear()
