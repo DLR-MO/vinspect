@@ -42,7 +42,7 @@ void computeColoredMesh(Inspection inspection, double point_radius)
   open3d::geometry::TriangleMesh mesh = sparse_mesh.createMesh(point_radius, false, 0, 0);
 }
 
-void integrateImagePy(Inspection inspection, 
+void integrateImagePy(Inspection* inspection, 
   const py::array_t<uint8_t>& color_image, std::string color_encoding, const py::array_t<uint16_t>& depth_image, std::string depth_encoding, float depth_scale, float depth_trunc, const int sensor_id,
   const Eigen::Matrix4d & extrinsic_optical, const Eigen::Matrix4d & extrinsic_world)
 { 
@@ -84,10 +84,7 @@ void integrateImagePy(Inspection inspection,
   }  
   cv::Mat depth_mat(depth_rows, depth_cols, CV_MAKETYPE(depth_encoding_int, depth_channels),
                 const_cast<uint16_t*>(depth_image.data()), depth_stride);
-  /*
-  cv::imshow( "depth image", depth_mat ); 
-  cv::waitKey(0);
-  */
+  
   open3d::geometry::Image depth_img;
   depth_img.Prepare(depth_cols, depth_rows, depth_channels, depth_bytes_per_channel);
   memcpy(depth_img.data_.data(), depth_mat.data, depth_img.data_.size());
@@ -97,8 +94,12 @@ void integrateImagePy(Inspection inspection,
                                       dept_img_ptr->height_);
   */
   std::shared_ptr<open3d::geometry::RGBDImage> rgbd = open3d::geometry::RGBDImage::CreateFromColorAndDepth(color_img, depth_img, depth_scale, depth_trunc, false);
-  //open3d::visualization::DrawGeometries({rgbd}, "Image");
-  inspection.integrateImage(*rgbd.get(), sensor_id, extrinsic_optical, extrinsic_world);  
+  
+  /*cv::imshow( "depth image", depth_mat ); 
+    cv::waitKey(0);
+    open3d::visualization::DrawGeometries({rgbd}, "Image");  
+  */
+  inspection->integrateImage(*rgbd.get(), sensor_id, extrinsic_optical, extrinsic_world);  
 }
 
 
