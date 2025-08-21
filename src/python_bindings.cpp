@@ -42,64 +42,55 @@ void computeColoredMesh(Inspection inspection, double point_radius)
   open3d::geometry::TriangleMesh mesh = sparse_mesh.createMesh(point_radius, false, 0, 0);
 }
 
-void integrateImagePy(Inspection* inspection, 
-  const py::array_t<uint8_t>& color_image, std::string color_encoding, const py::array_t<uint16_t>& depth_image, std::string depth_encoding, float depth_scale, float depth_trunc, const int sensor_id,
+void integrateImagePy(
+  Inspection * inspection,
+  const py::array_t<uint8_t> & color_image, std::string color_encoding,
+  const py::array_t<uint16_t> & depth_image, std::string depth_encoding, float depth_scale,
+  float depth_trunc, const int sensor_id,
   const Eigen::Matrix4d & extrinsic_optical, const Eigen::Matrix4d & extrinsic_world)
-{ 
+{
   int color_rows = color_image.shape(0);
   int color_cols = color_image.shape(1);
   int color_channels = color_image.shape(2);
   int color_stride = color_image.strides(0);
   int color_bytes_per_channel;
   int color_encoding_int;
-  if (color_encoding == "8U"){
+  if (color_encoding == "8U") {
     color_encoding_int = CV_8U;
     color_bytes_per_channel = 1;
-  }else{
+  } else {
     std::cout << "Color image encoding " << color_encoding << " can not be processed" << std::endl;
     exit(1);
   }
   cv::Mat color_mat(color_rows, color_cols, CV_MAKETYPE(color_encoding_int, color_channels),
-                const_cast<uint8_t*>(color_image.data()), color_stride);
-  /*cv::imshow( "color image", color_mat ); 
-  cv::waitKey(0);*/
+    const_cast<uint8_t *>(color_image.data()), color_stride);
   open3d::geometry::Image color_img;
   color_img.Prepare(color_cols, color_rows, color_channels, color_bytes_per_channel);
   memcpy(color_img.data_.data(), color_mat.data, color_img.data_.size());
-  //auto img_ptr = std::make_shared<open3d::geometry::Image>(color_img);
-  //open3d::visualization::DrawGeometries({img_ptr}, "Image", img_ptr->width_,
-  //                                    img_ptr->height_);
+
   int depth_rows = depth_image.shape(0);
   int depth_cols = depth_image.shape(1);
   int depth_channels = 1; //always the case for depth images
   int depth_stride = 0;
   int depth_bytes_per_channel;
   int depth_encoding_int;
-  if (depth_encoding == "16U"){
+  if (depth_encoding == "16U") {
     depth_encoding_int = CV_16U;
     depth_bytes_per_channel = 2;
-  }else{
+  } else {
     std::cout << "Depth image encoding " << depth_encoding << " can not be processed" << std::endl;
     exit(1);
-  }  
+  }
   cv::Mat depth_mat(depth_rows, depth_cols, CV_MAKETYPE(depth_encoding_int, depth_channels),
-                const_cast<uint16_t*>(depth_image.data()), depth_stride);
-  
+    const_cast<uint16_t *>(depth_image.data()), depth_stride);
   open3d::geometry::Image depth_img;
   depth_img.Prepare(depth_cols, depth_rows, depth_channels, depth_bytes_per_channel);
   memcpy(depth_img.data_.data(), depth_mat.data, depth_img.data_.size());
 
-  /*auto dept_img_ptr = std::make_shared<open3d::geometry::Image>(depth_img);
-  open3d::visualization::DrawGeometries({dept_img_ptr}, "Image", dept_img_ptr->width_,
-                                      dept_img_ptr->height_);
-  */
-  std::shared_ptr<open3d::geometry::RGBDImage> rgbd = open3d::geometry::RGBDImage::CreateFromColorAndDepth(color_img, depth_img, depth_scale, depth_trunc, false);
-  
-  /*cv::imshow( "depth image", depth_mat ); 
-    cv::waitKey(0);
-    open3d::visualization::DrawGeometries({rgbd}, "Image");  
-  */
-  inspection->integrateImage(*rgbd.get(), sensor_id, extrinsic_optical, extrinsic_world);  
+  std::shared_ptr<open3d::geometry::RGBDImage> rgbd =
+    open3d::geometry::RGBDImage::CreateFromColorAndDepth(color_img, depth_img, depth_scale,
+      depth_trunc, false);
+  inspection->integrateImage(*rgbd.get(), sensor_id, extrinsic_optical, extrinsic_world);
 }
 
 
@@ -135,7 +126,7 @@ PYBIND11_MODULE(vinspect_py, m)
   .def("get_sparse_value", &Inspection::getSparseValue)
   .def("get_sparse_user_color", &Inspection::getSparseUserColor)
   .def("get_sparse_timestamp", &Inspection::getSparseTimestamp)
-  .def("integrate_image", &Inspection::integrateImage)  
+  .def("integrate_image", &Inspection::integrateImage)
   .def("get_mesh", &Inspection::getMesh)
   .def("reinitialize_TSDF", &Inspection::reinitializeTSDF)
   .def("save", &Inspection::save)

@@ -117,9 +117,10 @@ Inspection::Inspection(
     //TODO Hard coded path until all in one save capability
     db_options_.create_if_missing = true;
     std::string rocksdb_file = "/tmp/vinspect_dense";
-    rocksdb::Status s = rocksdb::DB::Open(db_options_, rocksdb_file, &db_);    
-    if(!s.ok()){
-      throw std::runtime_error("Could not open " + rocksdb_file + ". Maybe the file exists and has wrong permissions.");
+    rocksdb::Status s = rocksdb::DB::Open(db_options_, rocksdb_file, &db_);
+    if(!s.ok()) {
+      throw std::runtime_error("Could not open " + rocksdb_file +
+          ". Maybe the file exists and has wrong permissions.");
     }
   }
 
@@ -483,7 +484,7 @@ void Inspection::reinitializeTSDF(double voxel_length, double sdf_trunc)
 void Inspection::clear()
 {
   // end saving thread
-  finished_ = true;  
+  finished_ = true;
   if (save_path_ != "") {
     saving_thread_->join();
   }
