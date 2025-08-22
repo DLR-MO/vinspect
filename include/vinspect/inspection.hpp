@@ -28,7 +28,6 @@
 #include "open3d/Open3D.h"
 #include "open3d/geometry/TriangleMesh.h"
 #include "open3d/io/ModelIO.h"
-#include "open3d/pipelines/integration/TSDFVolume.h"
 #include "vinspect/pose_tree/octree.h"
 #include "vinspect/pose_tree/octree_container.h"
 #include "vinspect/utils.hpp"
@@ -49,6 +48,8 @@ https://eigen.tuxfamily.org/dox/unsupported/group__EulerAngles__Module.html
 
 namespace vinspect
 {
+  /** Decides which device (CPU, GPU) to use. */
+  std::string selectDevice();
 
 /**
  *Class for storing and accessing the inspection data.
@@ -215,7 +216,7 @@ public:
   std::array<double, 7> eulerToQuatPose(const std::array<double, 6> euler_pose) const;
 
   void integrateImage(
-    const open3d::geometry::RGBDImage & image, open3d::geometry::Image depth_img, const int sensor_id,
+    const open3d::geometry::Image & color_img, open3d::geometry::Image depth_img, const int sensor_id,
     const Eigen::Matrix4d & extrinsic_optical, const Eigen::Matrix4d & extrinsic_world);
   std::shared_ptr<open3d::geometry::TriangleMesh> extractDenseReconstruction();
   void saveDenseReconstruction(std::string filename);
@@ -341,13 +342,10 @@ private:
   // Note: mutex needed because the asynchrones append and popback can lead to unpredictable double-free or corrupted size.
   // As a pointer because default mutex can not be copied with the default copy-constructor we use.
 
-  std::shared_ptr<open3d::pipelines::integration::ScalableTSDFVolume> tsdf_volume_;
   std::vector<open3d::camera::PinholeCameraIntrinsic> intrinsic_;
   std::vector<bool> intrinsic_recieved_;
   uint64_t integrated_frames_;
   open3d::geometry::AxisAlignedBoundingBox crop_box_;
-  int time_int_ = 0;
-  int time_int_t_ = 0;
 };
 /**
  * Loads the inspection from a journal file

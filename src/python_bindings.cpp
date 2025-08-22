@@ -87,10 +87,7 @@ void integrateImagePy(
   depth_img.Prepare(depth_cols, depth_rows, depth_channels, depth_bytes_per_channel);
   memcpy(depth_img.data_.data(), depth_mat.data, depth_img.data_.size());
 
-  std::shared_ptr<open3d::geometry::RGBDImage> rgbd =
-    open3d::geometry::RGBDImage::CreateFromColorAndDepth(color_img, depth_img, depth_scale,
-      depth_trunc, false);
-  inspection->integrateImage(*rgbd.get(), depth_img, sensor_id, extrinsic_optical, extrinsic_world);
+  inspection->integrateImage(color_img, depth_img, sensor_id, extrinsic_optical, extrinsic_world);
 }
 
 
