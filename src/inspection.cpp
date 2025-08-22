@@ -433,7 +433,7 @@ std::array<double, 7> Inspection::eulerToQuatPose(const std::array<double, 6> eu
 
 void Inspection::integrateImage(
   const open3d::geometry::Image & color_img, const open3d::geometry::Image depth_img,
-  const int sensor_id,
+  float depth_scale, float depth_trunc, const int sensor_id,
   const Eigen::Matrix4d & extrinsic_optical, const Eigen::Matrix4d & extrinsic_world)
 {
   // we can only integrate if we already recieved the intrinsic calibration for this sensor
@@ -444,10 +444,16 @@ void Inspection::integrateImage(
   }
 
   //todo check if we can do this more efficiently without copying data
-  const open3d::t::geometry::Image color_img_tens =
+  open3d::t::geometry::Image color_img_tens =
     open3d::t::geometry::Image::FromLegacy(color_img, device_);
   const open3d::t::geometry::Image depth_img_tens =
     open3d::t::geometry::Image::FromLegacy(depth_img, device_);
+  
+  if (depth_img_tens.GetDtype() == open3d::core::Dtype::Float32){
+    // TSDF with voxel block grid currently only supports to have color images as floats when depth is float
+    color_img_tens = color_img_tens.To(open3d::core::Dtype::Float32);
+  }
+
   auto focal_length = intrinsic_[sensor_id].GetFocalLength();
   auto principal_point = intrinsic_[sensor_id].GetPrincipalPoint();
   open3d::core::Tensor intrinsic_tens = open3d::core::Tensor::Init<double>(
@@ -462,7 +468,7 @@ void Inspection::integrateImage(
     //todo it might make sense to restrict these blocks to the cropped area (would reduce RAM usage)
     //todo depth_scale and depth_trunc should either be parameters or handled beforehands
     frustum_block_coords = voxel_grid_.GetUniqueBlockCoordinates(depth_img_tens, intrinsic_tens,
-      extrinsic_tens, 1000.0, 2.0);
+      extrinsic_tens, depth_scale, depth_trunc);
   } catch (const std::runtime_error & e) {
     std::cout << "no block is touched in tsdf volume, abort integration of this image. "
       "please check depth_scale and voxel_size, as well as depth_max of GetUniqueBlockCoordinates"
@@ -488,8 +494,8 @@ void Inspection::integrateImage(
 std::shared_ptr<open3d::geometry::TriangleMesh> Inspection::extractDenseReconstruction()
 {
   // todo beware of copying the returned mesh
-  //todo it should propably be also a parameter how often we want to see one point
-  open3d::geometry::TriangleMesh mesh_d = voxel_grid_.ExtractTriangleMesh(3.0f).ToLegacy();
+  //TDODO it should propably be also a parameter how often we want to see one point
+  open3d::geometry::TriangleMesh mesh_d = voxel_grid_.ExtractTriangleMesh(0.0f).ToLegacy();
   std::shared_ptr<open3d::geometry::TriangleMesh> mesh = std::make_shared<open3d::geometry::TriangleMesh>(mesh_d);
 
   // todo maybe give some warning if the whole mesh is cropped to 0 triangles

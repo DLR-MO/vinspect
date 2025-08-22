@@ -49,7 +49,7 @@ https://eigen.tuxfamily.org/dox/unsupported/group__EulerAngles__Module.html
 namespace vinspect
 {
   /** Decides which device (CPU, GPU) to use. */
-  std::string selectDevice();
+std::string selectDevice();
 
 /**
  *Class for storing and accessing the inspection data.
@@ -216,8 +216,9 @@ public:
   std::array<double, 7> eulerToQuatPose(const std::array<double, 6> euler_pose) const;
 
   void integrateImage(
-    const open3d::geometry::Image & color_img, open3d::geometry::Image depth_img, const int sensor_id,
-    const Eigen::Matrix4d & extrinsic_optical, const Eigen::Matrix4d & extrinsic_world);
+    const open3d::geometry::Image & color_img, open3d::geometry::Image depth_img, float depth_scale,
+    float depth_trunc, const int sensor_id, const Eigen::Matrix4d & extrinsic_optical,
+    const Eigen::Matrix4d & extrinsic_world);
   std::shared_ptr<open3d::geometry::TriangleMesh> extractDenseReconstruction();
   void saveDenseReconstruction(std::string filename);
 
@@ -260,7 +261,9 @@ public:
     intrinsic_recieved_[sensor_id] = true;
   }
 
-  void setIntrinsic2( int sensor_id, int width, int height, double fx, double fy, double cx, double cy)
+  void setIntrinsic2(
+    int sensor_id, int width, int height, double fx, double fy, double cx,
+    double cy)
   {
     intrinsic_[sensor_id] = open3d::camera::PinholeCameraIntrinsic(width, height, fx, fy, cx, cy);
     intrinsic_recieved_[sensor_id] = true;
