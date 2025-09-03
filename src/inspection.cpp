@@ -31,11 +31,13 @@ Inspection::Inspection(
   sparse_usage_ = false;
   dense_usage_ = false;
   dense_type_ = SensorType::RGB;
+  int number_dense_sensors = 0;
   for (auto sensor_type : sensor_types_) {
     if (sensor_type == SensorType::SPARSE) {
       sparse_usage_ = true;
     } else {
       dense_usage_ = true;
+      number_dense_sensors++;
       // todo this does not really make sense. what about the other types
       if (dense_type_ == SensorType::RGB) {
         dense_type_ = sensor_type;
@@ -86,12 +88,12 @@ Inspection::Inspection(
 
   integrated_frames_ = 0;
   if (dense_usage_) {
+    //todo would be good to handle sensors with different resolutions
     dense_sensor_resolution_ = dense_sensor_resolution;
     // todo the camera infos should be provided during construction
-    // todo should use dense_sensor_resolution_.size());
-    intrinsic_ = std::vector<open3d::camera::PinholeCameraIntrinsic>(1);
-    intrinsic_recieved_ =
-      std::vector<bool>(1);  // todo are these automatically initialized to false?
+    intrinsic_ =
+      std::vector<open3d::camera::PinholeCameraIntrinsic>(number_dense_sensors); //TODO should be able to handle different sensors with different calibrations
+    intrinsic_recieved_ = std::vector<bool>(number_dense_sensors);  // todo are these automatically initialized to false?
     crop_box_ = open3d::geometry::AxisAlignedBoundingBox(
       Eigen::Vector3d(
         inspection_space_3d_min[0], inspection_space_3d_min[1],
@@ -112,10 +114,14 @@ Inspection::Inspection(
       MAX_POSES_IN_LEAF);
     dense_data_count_ = 0;
 
-    //Hard coded path until all in one save capability
+    //TODO Hard coded path until all in one save capability
     db_options_.create_if_missing = true;
-    rocksdb::Status s = rocksdb::DB::Open(db_options_, "/tmp/vinspect_dense", &db_);
-    assert(s.ok());
+    std::string rocksdb_file = "/tmp/vinspect_dense";
+    rocksdb::Status s = rocksdb::DB::Open(db_options_, rocksdb_file, &db_);
+    if(!s.ok()) {
+      throw std::runtime_error("Could not open " + rocksdb_file +
+          ". Maybe the file exists and has wrong permissions.");
+    }
   }
 
   reference_mesh_ = mesh;
@@ -144,8 +150,8 @@ Inspection::Inspection(
     stringsToTypes(sensor_types_names), sparse_types, sparse_units, joint_names,
     meshFromPath(
       mesh_file_path), dense_sensor_resolution, save_path, inspection_space_3d_min,
-    inspection_space_3d_max, inspection_space_6d_min, inspection_space_6d_max, sparse_color_min_values,
-    sparse_color_max_values)
+    inspection_space_3d_max, inspection_space_6d_min, inspection_space_6d_max,
+    sparse_color_min_values, sparse_color_max_values)
 {
 }
 
@@ -249,9 +255,8 @@ std::vector<std::array<double, 6>> Inspection::getMultiDensePoses(const int perc
   float float_percentage = percentage / 100.0;
   float x = dense_data_count_ * float_percentage;
   float entries_to_skip = dense_data_count_ / x;
-  
-  for (size_t i = 0; i < dense_data_count_; i = i + entries_to_skip)
-  {
+
+  for (size_t i = 0; i < dense_data_count_; i = i + entries_to_skip) {
     std::string retriveKey = "D_1_" + std::to_string(i);
     std::string retrivedStringData;
     std::array<double, 6> pose;
@@ -452,6 +457,11 @@ std::shared_ptr<open3d::geometry::TriangleMesh> Inspection::extractDenseReconstr
   return croped_mesh;
 }
 
+void Inspection::saveDenseReconstruction(std::string filename) const
+{
+  open3d::io::WriteTriangleMesh(filename, *extractDenseReconstruction().get(), true);
+}
+
 void Inspection::recreateOctrees()
 {
   if (sparse_usage_) {
@@ -475,8 +485,9 @@ void Inspection::clear()
 {
   // end saving thread
   finished_ = true;
-  // todo this could lead to an error if we did not create this thread before
-  saving_thread_->join();
+  if (save_path_ != "") {
+    saving_thread_->join();
+  }
   finished_ = false;
   // remove the saved file
   if (std::filesystem::exists(save_path_)) {
@@ -525,7 +536,9 @@ void Inspection::clear()
 void Inspection::finish()
 {
   finished_ = true;
-  saving_thread_->join();
+  if (save_path_ != "") {
+    saving_thread_->join();
+  }
 }
 
 std::string Inspection::baseDataForSave() const

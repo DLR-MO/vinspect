@@ -217,6 +217,7 @@ public:
     const open3d::geometry::RGBDImage & image, const int sensor_id,
     const Eigen::Matrix4d & extrinsic_optical, const Eigen::Matrix4d & extrinsic_world);
   std::shared_ptr<open3d::geometry::TriangleMesh> extractDenseReconstruction() const;
+  void saveDenseReconstruction(std::string filename) const;
 
   inline uint64_t getSparseDataCount() const {return sparse_data_count_;}
   inline const std::vector<std::array<double, 3>> & getSparsePosition() const
@@ -254,6 +255,12 @@ public:
   void setIntrinsic(open3d::camera::PinholeCameraIntrinsic intrinsic, int sensor_id)
   {
     intrinsic_[sensor_id] = intrinsic;
+    intrinsic_recieved_[sensor_id] = true;
+  }
+
+  void setIntrinsic2( int sensor_id, int width, int height, double fx, double fy, double cx, double cy)
+  {
+    intrinsic_[sensor_id] = open3d::camera::PinholeCameraIntrinsic(width, height, fx, fy, cx, cy);
     intrinsic_recieved_[sensor_id] = true;
   }
 

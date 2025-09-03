@@ -2,16 +2,26 @@ cmake_minimum_required(VERSION 3.15)
 cmake_minimum_required(VERSION 3.15)
 project(vinspect)
 
+# TODO This is just currently necessary to make Open3D work on Ubuntu 24.04. Remove in the future
+set(CMAKE_C_COMPILER "gcc-11")
+set(CMAKE_CXX_COMPILER "g++-11")
+
 set(CMAKE_CXX_STANDARD 20)
 set(PYBIND11_FINDPYTHON ON)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/")
+set(Open3D_ROOT /usr/)
 
 find_package(ament_cmake REQUIRED) 
 find_package(ament_cmake_python REQUIRED)
 find_package(Open3D REQUIRED)
+find_package(OpenCV REQUIRED)
 find_package(Python REQUIRED COMPONENTS Interpreter Development)
 find_package(PythonLibs 3 REQUIRED)
 find_package(pybind11 REQUIRED)
+# fixes a problem in ubuntu24.04
+set_target_properties(pybind11::pybind11_headers PROPERTIES
+  INTERFACE_INCLUDE_DIRECTORIES "/usr/include"
+)
 find_package(TBB REQUIRED)
 find_package(Protobuf REQUIRED)
 find_package(rocksdb REQUIRED)
@@ -34,6 +44,7 @@ endif()
 add_compile_options(-Wall -Wextra -Wpedantic)
 include_directories(include)
 include_directories(${CMAKE_CURRENT_BINARY_DIR}) #ToDo probably better to have all .proto file in one folder and inlcude that instead of ${CMAKE_CURRENT_BINARY_DIR}
+include_directories(${OpenCV_INCLUDE_DIRS})
 set(SOURCES src/inspection.cpp src/utils.cpp src/sparse_mesh.cpp ${PROTO_SRCS} ${PROTO_HDRS})
 
 add_library(${PROJECT_NAME} SHARED ${SOURCES})
@@ -53,7 +64,7 @@ ament_target_dependencies(vinspect_py PUBLIC
   Open3D
   rocksdb
 )
-target_link_libraries(vinspect_py PUBLIC vinspect rocksdb ${PROTOBUF_LIBRARY})
+target_link_libraries(vinspect_py PUBLIC vinspect rocksdb ${PROTOBUF_LIBRARY} ${OpenCV_LIBS})
 set_target_properties(vinspect_py PROPERTIES LINKER_LANGUAGE CXX)
 
 if(BUILD_TESTING)
