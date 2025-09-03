@@ -19,7 +19,7 @@ def generate_launch_description():
         parameters=[
             {
                 'frame_id': 'world',
-                'sensor_types': ['RGB'],
+                'sensor_types': ['RGBD', 'RGBD', 'RGBD'],
                 'rgbd_color_topics': [
                     '/camera/color/image_rect_raw',
                 ],
