@@ -442,6 +442,9 @@ void Inspection::integrateImage(
               << " Will not integrate." << std::endl;
     return;
   }
+  
+  std::shared_ptr<open3d::geometry::RGBDImage> rgbd_img_ptr = open3d::geometry::RGBDImage::CreateFromColorAndDepth(color_img, depth_img, depth_scale, depth_trunc, false);
+  open3d::visualization::DrawGeometries({rgbd_img_ptr});
 
   //todo check if we can do this more efficiently without copying data
   open3d::t::geometry::Image color_img_tens =
@@ -497,6 +500,8 @@ std::shared_ptr<open3d::geometry::TriangleMesh> Inspection::extractDenseReconstr
   //TDODO it should propably be also a parameter how often we want to see one point
   open3d::geometry::TriangleMesh mesh_d = voxel_grid_.ExtractTriangleMesh(0.0f).ToLegacy();
   std::shared_ptr<open3d::geometry::TriangleMesh> mesh = std::make_shared<open3d::geometry::TriangleMesh>(mesh_d);
+
+  open3d::visualization::DrawGeometries({mesh});
 
   // todo maybe give some warning if the whole mesh is cropped to 0 triangles
   std::shared_ptr<open3d::geometry::TriangleMesh> croped_mesh = mesh->Crop(crop_box_);
