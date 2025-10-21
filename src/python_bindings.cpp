@@ -24,7 +24,7 @@ namespace py = pybind11;
 namespace vinspect
 {
 // this is just a function for testing purposes
-void showColoredMesh(Inspection inspection, double point_radius)
+void showColoredMesh(Inspection & inspection, double point_radius)
 {
   open3d::geometry::TriangleMesh input_mesh = open3d::geometry::TriangleMesh();
   SparseMesh sparse_mesh = SparseMesh(inspection);
@@ -35,7 +35,7 @@ void showColoredMesh(Inspection inspection, double point_radius)
 }
 
 // this is just a function for testing purposes
-void computeColoredMesh(Inspection inspection, double point_radius)
+void computeColoredMesh(Inspection & inspection, double point_radius)
 {
   open3d::geometry::TriangleMesh input_mesh = open3d::geometry::TriangleMesh();
   SparseMesh sparse_mesh = SparseMesh(inspection);
@@ -43,7 +43,7 @@ void computeColoredMesh(Inspection inspection, double point_radius)
 }
 
 void integrateImagePy(
-  Inspection * inspection,
+  Inspection & inspection,
   const py::array_t<uint8_t> & color_image, std::string color_encoding,
   const py::array_t<uint16_t> & depth_image, std::string depth_encoding, float depth_scale,
   float depth_trunc, const int sensor_id,
@@ -90,7 +90,7 @@ void integrateImagePy(
   std::shared_ptr<open3d::geometry::RGBDImage> rgbd =
     open3d::geometry::RGBDImage::CreateFromColorAndDepth(color_img, depth_img, depth_scale,
       depth_trunc, false);
-  inspection->integrateImage(*rgbd.get(), sensor_id, extrinsic_optical, extrinsic_world);
+  inspection.integrateImage(*rgbd.get(), sensor_id, extrinsic_optical, extrinsic_world);
 }
 
 
@@ -98,7 +98,7 @@ PYBIND11_MODULE(vinspect_py, m)
 {
   m.doc() = "Vinspect Python bindings";
 
-  py::class_<Inspection>(m, "Inspection")
+  py::class_<Inspection, std::unique_ptr<Inspection>>(m, "Inspection")
   .def(
     py::init<
       std::vector<std::string>, std::vector<std::string>, std::vector<std::string>,

@@ -96,7 +96,16 @@ public:
     6> inspection_space_6d_max = {1, 1, 1, 1, 1, 1},
     std::vector<double> sparse_color_min_values = {},
     std::vector<double> sparse_color_max_values = {});
+
   Inspection();
+
+  // Allow move
+  Inspection(Inspection&&) = default;
+  Inspection& operator=(Inspection&&)      = default;
+
+  // Prohibit copy
+  Inspection(const Inspection&) = delete;
+  Inspection& operator=(const Inspection&) = delete;
 
   std::string toString() const;
   void startSaving();
@@ -329,11 +338,11 @@ private:
   bool same_min_max_colors_;
   std::vector<double> sparse_color_min_values_;
   std::vector<double> sparse_color_max_values_;
-  std::thread * saving_thread_;
-  rocksdb::DB * db_;
+  std::thread saving_thread_;
+  std::unique_ptr<rocksdb::DB> db_;
   rocksdb::Options db_options_;
   rocksdb::Status db_status_;
-  std::mutex * mtx_;
+  std::mutex mtx_;
   // Note: mutex needed because the asynchrones append and popback can lead to unpredictable double-free or corrupted size.
   // As a pointer because default mutex can not be copied with the default copy-constructor we use.
 
@@ -348,6 +357,6 @@ private:
  * @param filepath path to the file to be loaded
  * @return the loaded inspection
  */
-Inspection load(const std::string filename);
+std::unique_ptr<Inspection> load(const std::string filename);
 }  // namespace vinspect
 #endif  // VINSPECT__INSPECTION_H_

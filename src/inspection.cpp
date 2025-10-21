@@ -117,7 +117,10 @@ Inspection::Inspection(
     //TODO Hard coded path until all in one save capability
     db_options_.create_if_missing = true;
     std::string rocksdb_file = "/tmp/vinspect_dense";
-    rocksdb::Status s = rocksdb::DB::Open(db_options_, rocksdb_file, &db_);
+    rocksdb::DB* db;
+    rocksdb::Status s = rocksdb::DB::Open(db_options_, rocksdb_file, &db);
+    db_ = std::unique_ptr<rocksdb::DB>(db);
+
     if(!s.ok()) {
       throw std::runtime_error("Could not open " + rocksdb_file +
           ". Maybe the file exists and has wrong permissions.");
@@ -134,7 +137,6 @@ Inspection::Inspection(
     // robot_states_ = std::vector<<std::vector<double>>(10000);
   }
 
-  mtx_ = new std::mutex();
   finished_ = false;
 }
 
@@ -176,7 +178,7 @@ void Inspection::startSaving()
       file << base_data_string;
       file.close();
     }
-    saving_thread_ = new std::thread([this] {appendSave(save_path_);});
+    saving_thread_ = std::thread([this] {appendSave(save_path_);});
   }
 }
 
@@ -441,14 +443,15 @@ void Inspection::integrateImage(
   std::array<double, 6> image_pose = transformMatrixToPose(extrinsic_world);
   // todo we should append the images and depth images to the dense octree and save them
 
-  mtx_->lock();
-  dense_posetree_.Insert(dense_data_count_, image_pose, false);
-  dense_image_.push_back(image.color_.data_);
-  dense_depth_image_.push_back(image.depth_.data_);
-  dense_pose_.push_back(image_pose);
-  dense_data_count_++;
-  integrated_frames_++;
-  mtx_->unlock();
+  {
+    std::lock_guard<std::mutex> mtx_lock(mtx_);
+    dense_posetree_.Insert(dense_data_count_, image_pose, false);
+    dense_image_.push_back(image.color_.data_);
+    dense_depth_image_.push_back(image.depth_.data_);
+    dense_pose_.push_back(image_pose);
+    dense_data_count_++;
+    integrated_frames_++;
+  }
 }
 
 std::shared_ptr<open3d::geometry::TriangleMesh> Inspection::extractDenseReconstruction() const
@@ -489,7 +492,7 @@ void Inspection::clear()
   // end saving thread
   finished_ = true;
   if (save_path_ != "") {
-    saving_thread_->join();
+    saving_thread_.join();
   }
   finished_ = false;
   // remove the saved file
@@ -540,7 +543,7 @@ void Inspection::finish()
 {
   finished_ = true;
   if (save_path_ != "") {
-    saving_thread_->join();
+    saving_thread_.join();
   }
 }
 
@@ -672,7 +675,7 @@ void Inspection::appendSave(const std::string & filepath)
     while (dense_data_written < dense_data_count_ && !(dense_image_.empty()) &&
       !(dense_depth_image_.empty()))
     {
-      mtx_->lock();
+      std::lock_guard<std::mutex> lock(mtx_);  // Lock during the loop body scope
       std::vector<u_int8_t> color_img_to_save = dense_image_.front();
       dense_image_.pop_front();
 
@@ -685,7 +688,6 @@ void Inspection::appendSave(const std::string & filepath)
           dense_data_written),
         serializedStructForDenseEntry(dense_data_written, color_img_to_save, depth_img_to_save));
       dense_data_written++;
-      mtx_->unlock();
       // Note: Both image containers implemented as deque for fast back and front access/deletion
     }
 
@@ -694,7 +696,7 @@ void Inspection::appendSave(const std::string & filepath)
   }
 }
 
-Inspection load(const std::string filepath)
+std::unique_ptr<Inspection> load(const std::string filepath)
 {
   // todo we could clean up the code duplication in this method
   if (!std::filesystem::exists(filepath)) {
@@ -774,7 +776,7 @@ Inspection load(const std::string filepath)
 
   open3d::geometry::TriangleMesh mesh = meshFromFilestream(f);
 
-  Inspection inspection = Inspection(
+  auto inspection = std::make_unique<Inspection>(
     sensor_types, sparse_types, sparse_units, joint_names, mesh, sensor_resolution, filepath,
     inspection_space_3d_min, inspection_space_3d_max, inspection_space_6d_min,
     inspection_space_6d_max, sparse_color_min_values,
@@ -813,7 +815,7 @@ Inspection load(const std::string filepath)
       splitStringArray(line.substr(line.find("C") + 1, line.size()), "(", ")");
     Eigen::Vector3d color = Eigen::Vector3d(
       std::stod(color_strings[0]), std::stod(color_strings[1]), std::stod(color_strings[2]));
-    inspection.addSparseMeasurement(time, sensor_id, position, orientation, values, color, false);
+    inspection->addSparseMeasurement(time, sensor_id, position, orientation, values, color, false);
     i++;
     if (i % 1000 == 0) {
       std::cout << "\x1b[1A"
@@ -826,7 +828,7 @@ Inspection load(const std::string filepath)
             << "Finished reading " << i << " measurments" << std::endl;
 
   // necessary to set the inspection space correctly to the loaded data
-  inspection.recreateOctrees();
+  inspection->recreateOctrees();
 
   std::cout << "Data loaded." << std::endl;
   return inspection;
