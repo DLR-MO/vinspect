@@ -160,12 +160,12 @@ void SparseMesh::setMergeColors(const int mean_min_max)
       };
   } else if (mean_min_max == 1) {
     // min
-    merge_values_ = [](double current_value, double new_value, int number_of_merged_points) {
+    merge_values_ = [](double current_value, double new_value, [[maybe_unused]] int number_of_merged_points) {
         return std::min(new_value, current_value);
       };
   } else if (mean_min_max == 2) {
     // max
-    merge_values_ = [](double current_value, double new_value, int number_of_merged_points) {
+    merge_values_ = [](double current_value, double new_value, [[maybe_unused]] int number_of_merged_points) {
         return std::max(new_value, current_value);
       };
   } else {

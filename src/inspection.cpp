@@ -242,7 +242,7 @@ std::array<double, 6> Inspection::getDensePoseFromId(const int id) const
   db_->Get(rocksdb::ReadOptions(), retriveKey, &retrivedStringData);
   Dense retrivedEntry;
   if (retrivedEntry.ParseFromString(retrivedStringData)) {
-    for (size_t i = 0; i < retrivedEntry.pose_size(); i++) {
+    for (ssize_t i = 0; i < retrivedEntry.pose_size(); i++) {
       pose[i] = retrivedEntry.pose(i);
     }
   }
@@ -263,7 +263,7 @@ std::vector<std::array<double, 6>> Inspection::getMultiDensePoses(const int perc
     db_->Get(rocksdb::ReadOptions(), retriveKey, &retrivedStringData);
     Dense retrivedEntry;
     if (retrivedEntry.ParseFromString(retrivedStringData)) {
-      for (size_t j = 0; j < retrivedEntry.pose_size(); j++) {
+      for (size_t j = 0; j < static_cast<size_t>(retrivedEntry.pose_size()); j++) {
         pose[j] = retrivedEntry.pose(j);
       }
       all_poses.push_back(pose);
@@ -290,8 +290,11 @@ std::vector<std::vector<std::array<u_int8_t, 3>>> Inspection::getImageFromId(con
     for (int row = 0; row < get<1>(dense_sensor_resolution_); row++) {
       for (int col = 0; col < get<0>(dense_sensor_resolution_); col++) {
         image[row][col] =
-        {retrivedEntry.color_image(index), retrivedEntry.color_image(index + 1),
-          retrivedEntry.color_image(index + 2)};
+        {
+          static_cast<u_int8_t>(retrivedEntry.color_image(index)), 
+          static_cast<u_int8_t>(retrivedEntry.color_image(index + 1)),
+          static_cast<u_int8_t>(retrivedEntry.color_image(index + 2))
+        };
         index += 3;
       }
     }
@@ -320,7 +323,7 @@ int Inspection::getClosestDenseMeasurement(const std::array<double, 7> & quat_po
 }
 
 std::vector<double> Inspection::getDenseAtPose(
-  const std::array<double, 6> & pose, double radius) const
+  [[maybe_unused]] const std::array<double, 6> & pose, [[maybe_unused]] double radius) const
 {
   // make sure there is no code duplication with the sparse version, when
   // implementing this

@@ -1,5 +1,4 @@
 cmake_minimum_required(VERSION 3.15)
-cmake_minimum_required(VERSION 3.15)
 project(vinspect)
 
 # TODO This is just currently necessary to make Open3D work on Ubuntu 24.04. Remove in the future
@@ -16,7 +15,7 @@ find_package(ament_cmake_python REQUIRED)
 find_package(Open3D REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(Python REQUIRED COMPONENTS Interpreter Development)
-find_package(PythonLibs 3 REQUIRED)
+find_package(Python3 REQUIRED)
 find_package(pybind11 REQUIRED)
 # fixes a problem in ubuntu24.04
 set_target_properties(pybind11::pybind11_headers PROPERTIES
@@ -104,5 +103,5 @@ ament_export_libraries(rocksdb)
 ament_export_libraries(${PROJECT_NAME})
 ament_export_include_directories(include)
 ament_export_include_directories(${CMAKE_CURRENT_BINARY_DIR}) #ToDo See line: 34
-ament_export_include_directories(rocksdb)
+#ament_export_include_directories(rocksdb)
 ament_package()
