@@ -22,6 +22,9 @@
 #include <tuple>
 #include <vector>
 
+#include "dcmtk/dcmdata/dctk.h"
+#include "dcmtk/dcmimgle/dcmimage.h"
+#include "dcmtk/dcmdata/dcuid.h"
 #include "rocksdb/db.h"
 #include "rocksdb/options.h"
 #include "open3d/Open3D.h"
@@ -208,6 +211,8 @@ public:
   void reinitializeTSDF(double voxel_length, double sdf_trunc);
 
   void save(const std::string & filepath) const;
+
+  void saveDiconde(const std::string & filepath) const;
 
   void clear();
 

@@ -696,6 +696,92 @@ void Inspection::appendSave(const std::string & filepath)
   }
 }
 
+void Inspection::saveDiconde(const std::string & filepath) const
+{
+
+  // Black placeholder image
+  uint16_t rows = 416;
+  uint16_t cols = 416;
+  uint16_t channels = 3;
+
+  // Create a new image
+  std::vector<u_int8_t> color_img(rows * cols * channels);
+
+  // Initialize with red
+  for (uint16_t i = 0; i < rows * cols; i++) {
+    color_img[i * channels + 2] = 255;
+  }
+
+  std::string seriesUID, studyUID;
+
+  // ------------------------------------------------------------------
+  // 1. Create a DICOM dataset
+  // ------------------------------------------------------------------
+  DcmFileFormat fileformat;
+  DcmDataset *dataset = fileformat.getDataset();
+
+  // ------------------------------------------------------------------
+  // 2. Fill in patient / study / series meta information
+  //    (for a minimal example we only set a few attributes)
+  // ------------------------------------------------------------------
+  //    - Patient Name & ID (can be empty)
+  dataset->putAndInsertString(DCM_PatientName, "Anon");
+  dataset->putAndInsertString(DCM_PatientID, "0000");
+
+  //    - Study Instance UID
+  char uid[100];
+  //if (studyUID.empty()) DCM_UCUID_Generate(studyUID.c_str(), 0);
+  dataset->putAndInsertString(DCM_StudyInstanceUID, studyUID.c_str());
+
+  //    - Series Instance UID
+  //if (seriesUID.empty()) DCM_UCUID_Generate(seriesUID.c_str(), 0);
+  dataset->putAndInsertString(DCM_SeriesInstanceUID, seriesUID.c_str());
+
+  //    - Modality
+  dataset->putAndInsertString(DCM_Modality, "OT");   // Other
+
+  //    - SOP Class UID: Secondary Capture Image Storage (1.2.840.10008.5.1.4.1.1.7)
+  dataset->putAndInsertString(DCM_SOPClassUID, UID_SecondaryCaptureImageStorage);
+
+  //    - SOP Instance UID
+  char sopInstUID[100];
+  dcmGenerateUniqueIdentifier(sopInstUID);
+  dataset->putAndInsertString(DCM_SOPInstanceUID, sopInstUID);
+
+  // ------------------------------------------------------------------
+  // 3. Set the image attributes
+  // ------------------------------------------------------------------
+  dataset->putAndInsertUint16(DCM_Rows, rows);
+  dataset->putAndInsertUint16(DCM_Columns, cols);
+  dataset->putAndInsertUint16(DCM_SamplesPerPixel, 3);            // RGB
+  dataset->putAndInsertString(DCM_PhotometricInterpretation, "RGB");
+  dataset->putAndInsertUint16(DCM_BitsAllocated, 8);              // 8‑bit per channel
+  dataset->putAndInsertUint16(DCM_BitsStored, 8);
+  dataset->putAndInsertUint16(DCM_HighBit, 7);
+  dataset->putAndInsertUint16(DCM_PixelRepresentation, 0);       // unsigned
+  dataset->putAndInsertUint16(DCM_PlanarConfiguration, 0);        // interleaved RGB
+
+  // ------------------------------------------------------------------
+  // 4. Store the raw pixel data
+  // ------------------------------------------------------------------
+  const size_t pixelCount = static_cast<size_t>(rows) * cols * 3;
+  DcmTag tag(DCM_PixelData);
+
+  // 4a. Attach the data directly as a DcmPixelItem
+  // We use the "addAndInsertElement" method which automatically
+  // stores the data in the dataset.
+  dataset->putAndInsertUint8Array(tag, &color_img[0], static_cast<Uint32>(pixelCount));
+
+  // ------------------------------------------------------------------
+  // 5. Write to disk
+  // ------------------------------------------------------------------
+  OFCondition cond = fileformat.saveFile("/home/vahl_fl/test.dcm");
+  if (!cond.good())
+  {
+      std::cerr << "Error saving DICOM file: " << cond.text() << std::endl;
+  }  
+}
+
 std::unique_ptr<Inspection> load(const std::string filepath)
 {
   // todo we could clean up the code duplication in this method
