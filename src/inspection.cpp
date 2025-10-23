@@ -699,17 +699,37 @@ void Inspection::appendSave(const std::string & filepath)
 void Inspection::saveDiconde(const std::string & filepath) const
 {
 
-  // Black placeholder image
+  // Placeholder image
   uint16_t rows = 416;
   uint16_t cols = 416;
   uint16_t channels = 3;
 
   // Create a new image
-  std::vector<u_int8_t> color_img(rows * cols * channels);
+  std::vector<u_int8_t> color_img(static_cast<u_int32_t>(rows) *  cols * channels);
+
+  std::cout << "rows: " << rows << ", cols: " << cols << std::endl;
 
   // Initialize with red
-  for (uint16_t i = 0; i < rows * cols; i++) {
-    color_img[i * channels + 2] = 255;
+  for (std::size_t i = 0; i < rows * cols; i++) {
+    auto idx = i * channels; 
+
+    color_img[idx] = 0;
+    color_img[idx + 1] = 255;
+    color_img[idx + 2] = 0;
+  }
+
+
+  // A second frame in blue
+  // Increase size of color_img
+
+  color_img.resize(static_cast<u_int32_t>(rows) * cols * channels * 2); // Double the size to accommodate two frames
+
+  for (std::size_t i = rows * cols; i < rows * cols * 2; i++) {
+    auto idx = i * channels;
+
+    color_img[idx] = 255;
+    color_img[idx + 1] = 0;
+    color_img[idx + 2] = 0;
   }
 
   std::string seriesUID, studyUID;
@@ -717,6 +737,7 @@ void Inspection::saveDiconde(const std::string & filepath) const
   // ------------------------------------------------------------------
   // 1. Create a DICOM dataset
   // ------------------------------------------------------------------
+  std::cout << "Creating dataset" << std::endl;
   DcmFileFormat fileformat;
   DcmDataset *dataset = fileformat.getDataset();
 
@@ -724,33 +745,29 @@ void Inspection::saveDiconde(const std::string & filepath) const
   // 2. Fill in patient / study / series meta information
   //    (for a minimal example we only set a few attributes)
   // ------------------------------------------------------------------
-  //    - Patient Name & ID (can be empty)
-  dataset->putAndInsertString(DCM_PatientName, "Anon");
+  std::cout << "Add metadata" << std::endl;
   dataset->putAndInsertString(DCM_PatientID, "0000");
+  dataset->putAndInsertString(DCM_PatientName, "Doe^John");
 
-  //    - Study Instance UID
   char uid[100];
-  //if (studyUID.empty()) DCM_UCUID_Generate(studyUID.c_str(), 0);
-  dataset->putAndInsertString(DCM_StudyInstanceUID, studyUID.c_str());
-
-  //    - Series Instance UID
-  //if (seriesUID.empty()) DCM_UCUID_Generate(seriesUID.c_str(), 0);
-  dataset->putAndInsertString(DCM_SeriesInstanceUID, seriesUID.c_str());
-
-  //    - Modality
-  dataset->putAndInsertString(DCM_Modality, "OT");   // Other
-
-  //    - SOP Class UID: Secondary Capture Image Storage (1.2.840.10008.5.1.4.1.1.7)
   dataset->putAndInsertString(DCM_SOPClassUID, UID_SecondaryCaptureImageStorage);
+  dataset->putAndInsertString(DCM_SOPInstanceUID, dcmGenerateUniqueIdentifier(uid, SITE_INSTANCE_UID_ROOT));
+  char seriesUid[100];
+  dcmGenerateUniqueIdentifier(seriesUid);
+  dataset->putAndInsertString(DCM_SeriesInstanceUID, seriesUid);
 
-  //    - SOP Instance UID
-  char sopInstUID[100];
-  dcmGenerateUniqueIdentifier(sopInstUID);
-  dataset->putAndInsertString(DCM_SOPInstanceUID, sopInstUID);
+  dataset->putAndInsertString(DCM_Modality, "OT");   // Other
+  dataset->putAndInsertString(DCM_ConversionType, "DV");
+
+  char studyInstanceUID[100];
+  dcmGenerateUniqueIdentifier(studyInstanceUID);
+  dataset->putAndInsertString(DCM_StudyInstanceUID, studyInstanceUID);
+
 
   // ------------------------------------------------------------------
   // 3. Set the image attributes
   // ------------------------------------------------------------------
+  std::cout << "Setting image attributes" << std::endl;
   dataset->putAndInsertUint16(DCM_Rows, rows);
   dataset->putAndInsertUint16(DCM_Columns, cols);
   dataset->putAndInsertUint16(DCM_SamplesPerPixel, 3);            // RGB
@@ -760,22 +777,23 @@ void Inspection::saveDiconde(const std::string & filepath) const
   dataset->putAndInsertUint16(DCM_HighBit, 7);
   dataset->putAndInsertUint16(DCM_PixelRepresentation, 0);       // unsigned
   dataset->putAndInsertUint16(DCM_PlanarConfiguration, 0);        // interleaved RGB
+  dataset->putAndInsertString(DCM_NumberOfFrames, "2");
+
 
   // ------------------------------------------------------------------
   // 4. Store the raw pixel data
   // ------------------------------------------------------------------
-  const size_t pixelCount = static_cast<size_t>(rows) * cols * 3;
-  DcmTag tag(DCM_PixelData);
+  std::cout << "Storing pixel data..." << std::endl;
 
   // 4a. Attach the data directly as a DcmPixelItem
-  // We use the "addAndInsertElement" method which automatically
-  // stores the data in the dataset.
-  dataset->putAndInsertUint8Array(tag, &color_img[0], static_cast<Uint32>(pixelCount));
+  dataset->putAndInsertUint8Array(DCM_PixelData, &color_img[0], static_cast<Uint32>(color_img.size()));
 
   // ------------------------------------------------------------------
   // 5. Write to disk
   // ------------------------------------------------------------------
-  OFCondition cond = fileformat.saveFile("/home/vahl_fl/test.dcm");
+  std::cout << "Writing to disk..." << std::endl;
+
+  OFCondition cond = fileformat.saveFile(filepath, EXS_LittleEndianExplicit);
   if (!cond.good())
   {
       std::cerr << "Error saving DICOM file: " << cond.text() << std::endl;
