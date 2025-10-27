@@ -88,7 +88,7 @@ Inspection::Inspection(
 
   integrated_frames_ = 0;
   if (dense_usage_) {
-    //todo would be good to handle sensors with different resolutions
+    // todo would be good to handle sensors with different resolutions
     dense_sensor_resolution_ = dense_sensor_resolution;
     // todo the camera infos should be provided during construction
     intrinsic_ =
@@ -696,40 +696,44 @@ void Inspection::appendSave(const std::string & filepath)
   }
 }
 
-void Inspection::saveDiconde(const std::string & filepath) const
+void Inspection::saveDiconde(const std::string & folder_path) const
 {
+  // Acquire mutex for the full save duration, so nothing changes during the saving process
+  std::lock_guard<std::mutex> lock(mtx_);
 
-  // Placeholder image
-  uint16_t rows = 416;
-  uint16_t cols = 416;
-  uint16_t channels = 3;
-
-  // Create a new image
-  std::vector<u_int8_t> color_img(static_cast<u_int32_t>(rows) *  cols * channels);
-
-  std::cout << "rows: " << rows << ", cols: " << cols << std::endl;
-
-  // Initialize with red
-  for (std::size_t i = 0; i < rows * cols; i++) {
-    auto idx = i * channels; 
-
-    color_img[idx] = 0;
-    color_img[idx + 1] = 255;
-    color_img[idx + 2] = 0;
-  }
+  // Much of the meta data will be duplicated among the different diconde files, 
+  // so we should create the header first
+  // TODO
+  
+  
+  // Save image series 
+  // Todo check if it is better to save them as individual files or as a series
+  // todo modify this if we have multiple sensors
 
 
-  // A second frame in blue
-  // Increase size of color_img
 
-  color_img.resize(static_cast<u_int32_t>(rows) * cols * channels * 2); // Double the size to accommodate two frames
+  auto cols = get<0>(dense_sensor_resolution_);
+  auto rows = get<1>(dense_sensor_resolution_);
+  uint8_t channels = 3;
 
-  for (std::size_t i = rows * cols; i < rows * cols * 2; i++) {
-    auto idx = i * channels;
+  // Create a new image data buffer
+  std::vector<u_int8_t> buf_color_imgs;
 
-    color_img[idx] = 255;
-    color_img[idx + 1] = 0;
-    color_img[idx + 2] = 0;
+  // Allocate enough memory for all images
+  buf_color_imgs.reserve(dense_data_count_ * rows *  cols * channels);
+
+  // Add every image
+  for (std::size_t i = 0; i < dense_data_count_; i++)
+  {
+    // Retrive the color image
+    auto img = getImageFromId(i);
+
+    // Add every row
+    for (std::size_t r_id = 0; r_id < rows; r_id++)
+    {
+      // We don't need to handle the pixel nesting, as it is already a continous array stored in place
+      buf_color_imgs.insert(buf_color_imgs.end(),img[r_id].begin(),img[r_id].end());
+    }
   }
 
   std::string seriesUID, studyUID;
