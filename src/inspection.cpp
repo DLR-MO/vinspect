@@ -696,7 +696,7 @@ void Inspection::appendSave(const std::string & filepath)
   }
 }
 
-void Inspection::saveDiconde(const std::string & folder_path) const
+void Inspection::saveDiconde(const std::string & folder_path)
 {
   // Acquire mutex for the full save duration, so nothing changes during the saving process
   std::lock_guard<std::mutex> lock(mtx_);
@@ -728,11 +728,14 @@ void Inspection::saveDiconde(const std::string & folder_path) const
     // Retrive the color image
     auto img = getImageFromId(i);
 
-    // Add every row
-    for (std::size_t r_id = 0; r_id < rows; r_id++)
+    // Add every pixel
+    for (int r_id = 0; r_id < rows; r_id++)
     {
-      // We don't need to handle the pixel nesting, as it is already a continous array stored in place
-      buf_color_imgs.insert(buf_color_imgs.end(),img[r_id].begin(),img[r_id].end());
+      for (int c_id = 0; c_id < cols; c_id++)
+      {
+        auto pixel = img[r_id][c_id];
+        buf_color_imgs.insert(buf_color_imgs.end(),pixel.begin(),pixel.end());
+      }
     }
   }
 
@@ -790,14 +793,14 @@ void Inspection::saveDiconde(const std::string & folder_path) const
   std::cout << "Storing pixel data..." << std::endl;
 
   // 4a. Attach the data directly as a DcmPixelItem
-  dataset->putAndInsertUint8Array(DCM_PixelData, &color_img[0], static_cast<Uint32>(color_img.size()));
+  dataset->putAndInsertUint8Array(DCM_PixelData, &buf_color_imgs[0], static_cast<Uint32>(buf_color_imgs.size()));
 
   // ------------------------------------------------------------------
   // 5. Write to disk
   // ------------------------------------------------------------------
   std::cout << "Writing to disk..." << std::endl;
 
-  OFCondition cond = fileformat.saveFile(filepath, EXS_LittleEndianExplicit);
+  OFCondition cond = fileformat.saveFile(folder_path + "/dicom.dcm", EXS_LittleEndianExplicit);
   if (!cond.good())
   {
       std::cerr << "Error saving DICOM file: " << cond.text() << std::endl;

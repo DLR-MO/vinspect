@@ -212,7 +212,7 @@ public:
 
   void save(const std::string & filepath) const;
 
-  void saveDiconde(const std::string & filepath) const;
+  void saveDiconde(const std::string & filepath);
 
   void clear();
 
