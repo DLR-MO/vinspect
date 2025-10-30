@@ -568,11 +568,10 @@ void Inspection::clear()
   recreateOctrees();
 }
 
+// todo could also add a field to store an arbitrary string as a note or comment
+
 bool Inspection::saveMetaData()
 {
-  // representation of the vectors
-  // todo we could also add a date to the header just to know when it was recorded
-  // todo could also add a field to store an arbitrary string as a note or comment
   json j = {
     {"header", 
       // Store the current unix timestamp
