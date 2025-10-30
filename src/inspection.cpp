@@ -23,10 +23,14 @@ Inspection::Inspection(const std::string & file_path) {
   }
   json static_metadata = json::parse(serialized_meta_data);
 
-  inspection_space_3d_.Min = static_metadata["3D Inspection space"]["min"];
-  inspection_space_3d_.Max = static_metadata["3D Inspection space"]["max"];
-  inspection_space_6d_.Min = static_metadata["6D Inspection space"]["min"];
-  inspection_space_6d_.Max = static_metadata["6D Inspection space"]["max"];
+  inspection_space_3d_ = {
+    .Min = static_metadata["3D Inspection space"]["min"], 
+    .Max = static_metadata["3D Inspection space"]["max"]
+  };
+  inspection_space_6d_ = {
+    .Min = static_metadata["6D Inspection space"]["min"], 
+    .Max = static_metadata["6D Inspection space"]["max"]
+  };
 
   sensor_types_ = static_metadata["Sensor types"].template get<std::vector<vinspect::SensorType>>();
   sparse_types_ = static_metadata["Sparse"]["Types"];
@@ -36,6 +40,7 @@ Inspection::Inspection(const std::string & file_path) {
 
   dense_sensor_resolution_ = static_metadata["Dense"]["Sensor resolution"];
 
+  // Make common initializations for both dense and sparse sensors
   setupSensors();
 
   recreateOctrees();
@@ -46,6 +51,7 @@ Inspection::Inspection(const std::string & file_path) {
   std::cout << "Processing measurements..." << std::endl;
 
   // Iterate over sparse measurements
+  if (sparse_usage_)
   {
     // Create an iterator
     auto it = std::unique_ptr<rocksdb::Iterator>(db_->NewIterator(rocksdb::ReadOptions()));
@@ -72,6 +78,7 @@ Inspection::Inspection(const std::string & file_path) {
     }
   }
   // Iterate over dense measurements
+  if(dense_usage_)
   {
     // Create an iterator
     auto it = std::unique_ptr<rocksdb::Iterator>(db_->NewIterator(rocksdb::ReadOptions()));
@@ -123,26 +130,21 @@ Inspection::Inspection(
   3> inspection_space_3d_max, std::array<double,
   6> inspection_space_6d_min, std::array<double, 6> inspection_space_6d_max,
   std::vector<double> sparse_color_min_values,
-  std::vector<double> sparse_color_max_values)
+  std::vector<double> sparse_color_max_values) 
+  : 
+  sensor_types_{sensor_types}, 
+  sparse_units_{sparse_units},
+  sparse_types_{sparse_types}, 
+  dense_sensor_resolution_{dense_sensor_resolution},
+  inspection_space_3d_{.Min = inspection_space_3d_min, .Max = inspection_space_3d_max},
+  inspection_space_6d_{.Min = inspection_space_6d_min, .Max = inspection_space_6d_max},
+  sparse_color_min_values_{sparse_color_min_values}, 
+  sparse_color_max_values_{sparse_color_max_values}
 {
   // Create new database
   initDB(save_path);
 
-  inspection_space_3d_.Min = inspection_space_3d_min;
-  inspection_space_3d_.Max = inspection_space_3d_max;
-
-  inspection_space_6d_.Min = inspection_space_6d_min;
-  inspection_space_6d_.Max = inspection_space_6d_max;
-
-  sparse_color_min_values_ = sparse_color_min_values;
-  sparse_color_max_values_ = sparse_color_max_values;
-  
-  sensor_types_ = sensor_types;
-  sparse_units_ = sparse_units;
-  sparse_types_ = sparse_types;
-
-  dense_sensor_resolution_ = dense_sensor_resolution;
-
+  // Make common initializations for both dense and sparse sensors
   setupSensors();
 
   // Apply workspace boundaries
