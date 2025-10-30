@@ -52,6 +52,8 @@ https://eigen.tuxfamily.org/dox/unsupported/group__EulerAngles__Module.html
 #define OCTREE_DEPTH 10
 #define MAX_POSES_IN_LEAF 21
 
+#define DB_NUMBER_DIGITS_FOR_IDX 24
+
 #define DB_KEY_STATIC_METADATA "/metadata/static"
 #define DB_KEY_REFERENCE_MESH "/reference/mesh"
 #define DB_KEY_SPARSE_DATA_PREFIX "/data/sparse/"
@@ -354,8 +356,6 @@ private:
   rocksdb::Options db_options_;
   rocksdb::Status db_status_;
   std::mutex mtx_;
-  // Note: mutex needed because the asynchronous append and popback can lead to unpredictable double-free or corrupted size.
-  // As a pointer because default mutex can not be copied with the default copy-constructor we use.
 
   std::shared_ptr<open3d::pipelines::integration::ScalableTSDFVolume> tsdf_volume_;
   std::vector<open3d::camera::PinholeCameraIntrinsic> intrinsic_;

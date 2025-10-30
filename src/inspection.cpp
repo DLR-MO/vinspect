@@ -210,9 +210,10 @@ void Inspection::setupSensors()
     }
     // todo would be better to reuse the data by using a not container octree
     for (uint64_t i = 0; i < sparse_types_.size(); i++) {
-      sparse_data_type_to_id_[sparse_types_[i]] = i;
-    }
+      sparse_data_type_to_id_[sparse_types_[i]] = i; 
+    } 
 
+    // Find the min/max values for each sparse sensor
     sparse_min_values_ =
       std::vector<double>(sparse_types_.size(), std::numeric_limits<double>::max());
     sparse_max_values_ =
@@ -306,7 +307,7 @@ std::vector<double> Inspection::getValuesForIds(
 
 std::array<double, 6> Inspection::getDensePoseFromId(const int sensor_id, const int sample_id) const
 {
-  std::string retrieveKey = DB_KEY_DENSE_DATA_PREFIX + std::to_string(sensor_id) + "/" + std::to_string(sample_id);
+  std::string retrieveKey = DB_KEY_DENSE_DATA_PREFIX + fmt::format("{}/{:0>{}}", sensor_id, sample_id, DB_NUMBER_DIGITS_FOR_IDX);
   std::string retrievedStringData;
   db_->Get(rocksdb::ReadOptions(), retrieveKey, &retrievedStringData);
 
@@ -329,7 +330,7 @@ std::vector<std::array<double, 6>> Inspection::getMultiDensePoses(const int sens
   float entries_to_skip = dense_data_count_ / x;
 
   for (size_t i = 0; i < dense_data_count_; i = i + entries_to_skip) {
-    std::string retrieveKey = DB_KEY_DENSE_DATA_PREFIX + std::to_string(sensor_id) + "/" + std::to_string(i); // TODO use leading zeros for these as well
+    std::string retrieveKey = DB_KEY_DENSE_DATA_PREFIX + fmt::format("{}/{:0>{}}", sensor_id, i, DB_NUMBER_DIGITS_FOR_IDX);
     std::string retrievedStringData;
     db_->Get(rocksdb::ReadOptions(), retrieveKey, &retrievedStringData);
 
@@ -348,7 +349,7 @@ std::vector<std::array<double, 6>> Inspection::getMultiDensePoses(const int sens
 
 std::vector<std::vector<std::array<u_int8_t, 3>>> Inspection::getImageFromId(const int sensor_id, const int sample_id) const
 {
-  std::string retrieveKey = DB_KEY_DENSE_DATA_PREFIX + std::to_string(sensor_id) + "/" + std::to_string(sample_id);
+  std::string retrieveKey = DB_KEY_DENSE_DATA_PREFIX + fmt::format("{}/{:0>{}}", sensor_id, sample_id, DB_NUMBER_DIGITS_FOR_IDX);
   std::string retrievedStringData;
   std::vector<std::vector<std::array<u_int8_t, 3>>> image;
   db_->Get(rocksdb::ReadOptions(), retrieveKey, &retrievedStringData);
@@ -413,9 +414,12 @@ void Inspection::addSparseMeasurementImpl(
 {
   if (!isPointInSpace(&inspection_space_3d_, position)) {
     std::cout << "Ignoring measurement at (" << position[0] << ", " << position[1] << ","
-              << position[2] << ") because it is outside inspection space." << std::endl;
+    << position[2] << ") because it is outside inspection space." << std::endl;
   } else {
 
+    // Acquire the mutex
+    std::lock_guard<std::mutex> lock(mtx_);
+    
     // Estimate min and max value for each data type reported by the sparse sensor
     for (uint64_t i = 0; i < sparse_types_.size(); i++) {
       sparse_min_values_[i] = std::min(sparse_min_values_[i], values[i]);
@@ -437,6 +441,7 @@ void Inspection::addSparseMeasurementImpl(
 
     if (store_in_database)
     {
+
       // Serialize data point
       json j = {
         {"timestamp", timestamp},
@@ -454,7 +459,7 @@ void Inspection::addSparseMeasurementImpl(
       std::string serialized_datapoint = j.dump();
   
       // Construct a key in the format "prefix/{sensor_id}/{meassurement_id}"
-      std::string key = DB_KEY_SPARSE_DATA_PREFIX + fmt::format("{}/{:0>{}}", sensor_id, sparse_data_count_, 24);
+      std::string key = DB_KEY_SPARSE_DATA_PREFIX + fmt::format("{}/{:0>{}}", sensor_id, sparse_data_count_, DB_NUMBER_DIGITS_FOR_IDX);
   
       // Store in DB
       if (!db_->Put(rocksdb::WriteOptions(), key, serialized_datapoint).ok())
@@ -488,7 +493,7 @@ void Inspection::addImageImpl(
     
     // save dense data to database
     if (store_in_database) {
-      std::string key = DB_KEY_DENSE_DATA_PREFIX + fmt::format("{}/{:0>{}}", sensor_id, sparse_data_count_, 24);
+      std::string key = DB_KEY_DENSE_DATA_PREFIX + fmt::format("{}/{:0>{}}", sensor_id, sparse_data_count_, DB_NUMBER_DIGITS_FOR_IDX);
       std::string value = serializedStructForDenseEntry(dense_data_count_, sensor_id, image.color_.data_, image.depth_.data_, extrinsic_optical, extrinsic_world);
       db_->Put(rocksdb::WriteOptions(), key, value);
     }
