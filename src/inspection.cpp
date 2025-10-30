@@ -45,8 +45,7 @@ Inspection::Inspection(const std::string & file_path) {
 
   recreateOctrees();
 
-  // TODO also load mesh
-  // open3d::geometry::TriangleMesh mesh = meshFromFilestream(f);   open3d::io::ReadTriangleMesh(mesh_path, mesh);
+  loadMesh(DB_KEY_REFERENCE_MESH, reference_mesh_);
 
   std::cout << "Processing measurements..." << std::endl;
 
@@ -158,10 +157,7 @@ Inspection::Inspection(
 
   // Save the reference mesh in the DB
   reference_mesh_ = mesh;
-  if (!storeReferenceMesh())
-  {
-    throw std::runtime_error("Something went wrong while accessing the DB during reference mesh save.");
-  }
+  storeMesh(DB_KEY_REFERENCE_MESH, reference_mesh_);
 }
   
 Inspection::Inspection(
@@ -539,7 +535,9 @@ void Inspection::reinitializeTSDF(double voxel_length, double sdf_trunc)
 
 void Inspection::clear()
 {
-  // TODO delete all database keys (except static metadata)
+  // delete dynamic database keys
+  db_->DeleteRange(rocksdb::WriteOptions(), DB_KEY_SPARSE_DATA_PREFIX, DB_KEY_SPARSE_DATA_PREFIX + '\xFF');
+  db_->DeleteRange(rocksdb::WriteOptions(), DB_KEY_DENSE_DATA_PREFIX, DB_KEY_DENSE_DATA_PREFIX + '\xFF');
 
   // reset the inspection
   sparse_data_count_ = 0;
@@ -605,18 +603,17 @@ bool Inspection::saveMetaData()
   return db_->Put(rocksdb::WriteOptions(), DB_KEY_STATIC_METADATA, metadata).ok();
 }
 
-bool Inspection::storeReferenceMesh()
+void Inspection::storeMesh(const std::string &key, const open3d::geometry::TriangleMesh &mesh)
 {
   // Open3d only supports export to files, not byte streams, we we need to use a temp file
-  std::string temp_file = std::tmpnam(nullptr);
-  open3d::io::WriteTriangleMesh(temp_file, reference_mesh_, true);
+  std::string temp_file = fmt::format("/tmp/vinspect_mesh_{}.ply", std::rand());
+  open3d::io::WriteTriangleMesh(temp_file, mesh, true);
   std::ifstream file(temp_file);
   
   // Check if file can be opened
   if (!file.is_open())
   {
-    std::cerr << "Error opening temporary file: '" << temp_file << "' Mesh not saved!" << std::endl;
-    return false;
+    throw std::runtime_error(fmt::format("Error opening temporary file: '{}'", temp_file));
   }
 
   // Read the entire content of the file into a string stream
@@ -629,6 +626,42 @@ bool Inspection::storeReferenceMesh()
   std::remove(temp_file.c_str());
 
   // Save in database
-  return db_->Put(rocksdb::WriteOptions(), DB_KEY_REFERENCE_MESH, content).ok();
+  if(!db_->Put(rocksdb::WriteOptions(), key, content).ok())
+  {
+    throw std::runtime_error("Could not store mesh in db");
+  }
+}
+
+void Inspection::loadMesh(const std::string &key, open3d::geometry::TriangleMesh &mesh)
+{
+  // Get mesh from db 
+  std::string serialized_mesh;
+  if (!db_->Get(rocksdb::ReadOptions(), key, &serialized_mesh).ok())
+  {
+    throw std::runtime_error("Could load mesh from db");
+  }
+
+  // Open3d only supports export to files, not byte streams, we we need to use a temp file
+  std::string temp_file = fmt::format("/tmp/vinspect_mesh_{}.ply", std::rand());
+
+  std::ofstream file(temp_file);
+  // Check if file can be opened
+  if (!file.is_open())
+  {
+    throw std::runtime_error(fmt::format("Error opening temporary file: '{}'", temp_file));
+  }
+
+  // Write mesh to file
+  file << serialized_mesh;
+  file.close();
+
+  // Load mesh into open3d
+  if (!open3d::io::ReadTriangleMesh(temp_file, mesh))
+  {
+    throw std::runtime_error("Could not load mesh from file");
+  }
+  
+  // Close and remove the file
+  std::remove(temp_file.c_str());
 }
 }  // namespace vinspect

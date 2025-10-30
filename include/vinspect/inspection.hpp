@@ -304,10 +304,18 @@ private:
   bool saveMetaData();
 
   /**
-   * Stores the reference mesh in the DB
-   * @return true if the save was successful
+   * Stores mesh in the DB.
+   * @param key the key under which the mesh should be stored
+   * @param mesh the mesh to be stored
    */
-  bool storeReferenceMesh();
+  void storeMesh(const std::string &key, const open3d::geometry::TriangleMesh &mesh);
+
+  /**
+   * Loads a mesh from the DB.
+   * @param key the key from which we want to load the mesh
+   * @param mesh we load into this mesh
+   */
+  void loadMesh(const std::string &key, open3d::geometry::TriangleMesh &mesh);
 
   void addSparseMeasurementImpl(
     double timestamp, int sensor_id, const std::array<double, 3> & position,
