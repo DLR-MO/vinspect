@@ -76,7 +76,6 @@ public:
    * @param sparse_types The sparse data type names. If multiple
    *sensors are used, this is the sum of their data type names.
    * @param sparse_units The units of the sparse data, only used for visualization.
-   * @param joint_names The joint names, if a robot is used.
    * @param mesh The reference mesh of the part that should be inspected.
    * @param dense_sensor_resolution The dense sensor resolution.
    * @param save_path The path where the inspection data should be saved. If
@@ -90,7 +89,7 @@ public:
    **/
   Inspection(
     std::vector<SensorType> sensor_types, std::vector<std::string> sparse_types,
-    std::vector<std::string> sparse_units, std::vector<std::string> joint_names,
+    std::vector<std::string> sparse_units,
     open3d::geometry::TriangleMesh mesh, std::tuple<int, int> dense_sensor_resolution,
     std::string save_path, std::array<double, 3> inspection_space_3d_min = {-1, -1, -1},
     std::array<double, 3> inspection_space_3d_max = {1, 1, 1}, std::array<double,
@@ -101,7 +100,7 @@ public:
 
   Inspection(
     std::vector<std::string> sensor_types_names, std::vector<std::string> sparse_types,
-    std::vector<std::string> sparse_units, std::vector<std::string> joint_names,
+    std::vector<std::string> sparse_units, 
     std::string mesh_file_path, std::tuple<int, int> dense_sensor_resolution, std::string save_path,
     std::array<double, 3> inspection_space_3d_min = {-1, -1, -1},
     std::array<double, 3> inspection_space_3d_max = {1, 1, 1}, std::array<double,
@@ -121,8 +120,6 @@ public:
   Inspection& operator=(const Inspection&) = delete;
 
   std::string toString() const;
-
-  void initDB(const std::string &file_path);
 
   /**
    * Returns reference to the open3d mesh
@@ -291,6 +288,16 @@ public:
 
 private:
   /**
+   * Loads or creates the DB file if it does not exist
+   */
+  void initDB(const std::string &file_path);
+
+  /**
+   * Shared setup code between the constructors
+   */
+  void setupSensors();
+
+  /**
    * Stores the static meta data of the inspection
    * @return true if the save was successful
    */
@@ -311,13 +318,11 @@ private:
     const open3d::geometry::RGBDImage & image, const int sensor_id,
     const Eigen::Matrix4d & extrinsic_optical, const Eigen::Matrix4d & extrinsic_world, bool store_in_database = true);
 
-  uint64_t sparse_data_count_, dense_data_count_;
+  uint64_t sparse_data_count_ = 0, dense_data_count_ = 0;
   std::vector<SensorType> sensor_types_;
   std::vector<std::string> sparse_units_;
-  bool sparse_usage_, dense_usage_, robot_usage_;
-  SensorType dense_type_;
+  bool sparse_usage_ = false, dense_usage_ = false;
   std::vector<std::string> sparse_types_;
-  std::vector<std::string> joint_names_;
   open3d::geometry::TriangleMesh reference_mesh_;
   std::tuple<int, int> dense_sensor_resolution_;
   OrthoTree::OctreePointC sparse_octree_;
@@ -330,14 +335,11 @@ private:
   std::vector<std::array<double, 4>> sparse_orientation_, dense_orientation_;
   std::vector<std::vector<double>> sparse_value_;
   std::vector<Eigen::Vector3d> sparse_user_color_;
-  std::vector<double> robot_timestamp_;
-  std::vector<std::vector<double>> robot_states_;
   OrthoTree::BoundingBox3D inspection_space_3d_;
   OrthoTree::BoundingBoxND<6> inspection_space_6d_;
-  bool fixed_min_max_values_;
   std::vector<double> sparse_min_values_;
   std::vector<double> sparse_max_values_;
-  bool same_min_max_colors_;
+  bool same_min_max_colors_ = false;
   std::vector<double> sparse_color_min_values_;
   std::vector<double> sparse_color_max_values_;
   std::unique_ptr<rocksdb::DB> db_;
@@ -352,11 +354,5 @@ private:
   std::vector<bool> intrinsic_recieved_;
   open3d::geometry::AxisAlignedBoundingBox crop_box_;
 };
-/**
- * Loads the inspection from a journal file
- * @param filepath path to the file to be loaded
- * @return the loaded inspection
- */
-std::unique_ptr<Inspection> load(const std::string filename);
 }  // namespace vinspect
 #endif  // VINSPECT__INSPECTION_H_

@@ -225,7 +225,7 @@ std::string serializedStructForDenseEntry(
   return denseEntry.SerializeAsString();
 }
 
-Eigen::Matrix4d matrixFromFlatArray(const google::protobuf::RepeatedField<double>& flat_array){
+Eigen::Matrix4d matrixFromFlatProtoArray(const google::protobuf::RepeatedField<double>& flat_array){
   if (flat_array.size() != 16) {
         throw std::invalid_argument("Extrinsic optical matrix must have exactly 16 elements");
   }

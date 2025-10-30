@@ -62,7 +62,7 @@ std::vector<std::string> splitStringArray(
   std::array<double, 6> quatToEulerPose(const std::array<double, 7> quat_pose);
   std::array<double, 7> eulerToQuatPose(const std::array<double, 6> euler_pose);
   
-  Eigen::Matrix4d matrixFromFlatArray(const google::protobuf::RepeatedField<double>& flat_array);
+  Eigen::Matrix4d matrixFromFlatProtoArray(const google::protobuf::RepeatedField<double>& flat_array);
 
   /**
    * Serializes a filled protobuf object.
@@ -81,6 +81,14 @@ std::vector<std::string> splitStringArray(
     const Eigen::Matrix4d & extrinsic_optical, 
     const Eigen::Matrix4d & extrinsic_world
   );
+
+  inline Eigen::Vector3d cast(const std::array<double, 3>& arr) {
+    return Eigen::Vector3d(arr[0], arr[1], arr[2]);
+  }
+
+  inline std::array<double, 3> cast(const Eigen::Vector3d& arr) {
+    return std::array<double, 3>({arr.x(), arr.y(), arr.z()});
+  }
 
 }  // namespace vinspect
 #endif  // VINSPECT__UTILS_H_

@@ -36,7 +36,7 @@ Inspection::Inspection(const std::string & file_path) {
 
   dense_sensor_resolution_ = static_metadata["Dense"]["Sensor resolution"];
 
-  joint_names_ = static_metadata["Joint names"];
+  setupSensors();
 
   recreateOctrees();
 
@@ -101,21 +101,23 @@ Inspection::Inspection(const std::string & file_path) {
       addImageImpl(
         *rgbd, 
         retrievedEntry.sensor_id(), 
-        matrixFromFlatArray(retrievedEntry.extrinsic_optical_matrix()), 
-        matrixFromFlatArray(retrievedEntry.extrinsic_optical_matrix()),
+        matrixFromFlatProtoArray(retrievedEntry.extrinsic_optical_matrix()), 
+        matrixFromFlatProtoArray(retrievedEntry.extrinsic_optical_matrix()),
         false
       );
     }
   }
-
+  
   std::cout << "Data loaded." << std::endl;
-
+  
 }
+
+// todo maybe rename sparse->point and dense->area?
 
 // This constructor creates a new vinspect project with a new file
 Inspection::Inspection(
   std::vector<SensorType> sensor_types, std::vector<std::string> sparse_types,
-  std::vector<std::string> sparse_units, std::vector<std::string> joint_names,
+  std::vector<std::string> sparse_units,
   open3d::geometry::TriangleMesh mesh, std::tuple<int, int> dense_sensor_resolution,
   std::string save_path, std::array<double, 3> inspection_space_3d_min, std::array<double,
   3> inspection_space_3d_max, std::array<double,
@@ -131,100 +133,21 @@ Inspection::Inspection(
 
   inspection_space_6d_.Min = inspection_space_6d_min;
   inspection_space_6d_.Max = inspection_space_6d_max;
-  // todo maybe rename sparse->point and dense->area?
-  //  Check if what type of sensor is used
+
+  sparse_color_min_values_ = sparse_color_min_values;
+  sparse_color_max_values_ = sparse_color_max_values;
+  
   sensor_types_ = sensor_types;
   sparse_units_ = sparse_units;
-  sparse_usage_ = false;
-  dense_usage_ = false;
-  dense_type_ = SensorType::RGB;
-  int number_dense_sensors = 0;
-  for (auto sensor_type : sensor_types_) {
-    if (sensor_type == SensorType::SPARSE) {
-      sparse_usage_ = true;
-    } else {
-      dense_usage_ = true;
-      number_dense_sensors++;
-      // todo this does not really make sense. what about the other types
-      if (dense_type_ == SensorType::RGB) {
-        dense_type_ = sensor_type;
-      } else if (dense_type_ != sensor_type) {
-        throw std::runtime_error("It is not possible to use two different dense sensor types.");
-      }
-    }
-  }
+  sparse_types_ = sparse_types;
 
-  if (sparse_usage_) {
-    sparse_data_count_ = 0;
-    if (sparse_types.empty()) {
-      throw std::runtime_error(
-              "sparse_types must be provided if a sparse sensor is "
-              "used.");
-    }
-    // List of data type names, e.g. distance, angle, depth
-    sparse_types_ = sparse_types;
-    // todo would be better to reuse the data by using a not container octree
-    sparse_data_type_to_id_ = std::map<std::string, int>();
-    for (uint64_t i = 0; i < sparse_types_.size(); i++) {
-      sparse_data_type_to_id_[sparse_types_[i]] = i;
-    }
+  dense_sensor_resolution_ = dense_sensor_resolution;
 
-    fixed_min_max_values_ = false;
-    sparse_min_values_ =
-      std::vector<double>(sparse_types_.size(), std::numeric_limits<double>::max());
-    sparse_max_values_ =
-      std::vector<double>(sparse_types_.size(), std::numeric_limits<double>::lowest());
-
-    if (sparse_color_min_values.size() == 0 && sparse_color_max_values.size() == 0) {
-      same_min_max_colors_ = true;
-    } else if (
-      sparse_color_min_values.size() != sparse_types_.size() ||
-      sparse_color_max_values.size() != sparse_types_.size())
-    {
-      throw std::runtime_error(
-              "sparse_min_color_values and sparse_max_color_values must be the same size as "
-              "sparse_types");
-    } else {
-      same_min_max_colors_ = false;
-      sparse_color_min_values_ = sparse_color_min_values;
-      sparse_color_max_values_ = sparse_color_max_values;
-    }
-  }
-
-  if (dense_usage_) {
-    //todo would be good to handle sensors with different resolutions
-    dense_sensor_resolution_ = dense_sensor_resolution;
-    // todo the camera infos should be provided during construction
-    intrinsic_ =
-      std::vector<open3d::camera::PinholeCameraIntrinsic>(number_dense_sensors); //TODO should be able to handle different sensors with different calibrations
-    intrinsic_recieved_ = std::vector<bool>(number_dense_sensors);  // todo are these automatically initialized to false?
-    crop_box_ = open3d::geometry::AxisAlignedBoundingBox(
-      Eigen::Vector3d(
-        inspection_space_3d_min[0], inspection_space_3d_min[1],
-        inspection_space_3d_min[2]),
-      Eigen::Vector3d(
-        inspection_space_3d_max[0], inspection_space_3d_max[1],
-        inspection_space_3d_max[2]));
-    // todo we might also want to have multiple TSDF volumes for different dense sensor types,
-    // but also use multiple dense sensors of the same type for the same tsdf
-    // todo don't hardcode the parameters of the tsdf volume
-    tsdf_volume_ = std::make_shared<open3d::pipelines::integration::ScalableTSDFVolume>(
-      4.0 / 512.0, 0.04, open3d::pipelines::integration::TSDFVolumeColorType::RGB8);
-    dense_data_count_ = 0;
-  }
+  setupSensors();
 
   // Apply workspace boundaries
   recreateOctrees();
-
-  // Save joint angles coninously to playback robot trajectory later
-  // They can also be matched by the timestamp to a sensor reading
-  robot_usage_ = joint_names_.size() > 0;
-  if (robot_usage_) {
-    joint_names_ = joint_names;
-    robot_timestamp_ = std::vector<double>(10000);
-    // robot_states_ = std::vector<<std::vector<double>>(10000);
-  }
-    
+ 
   // Save static metadata that is unlikely to change in the DB
   if (!saveMetaData())
   {
@@ -241,14 +164,14 @@ Inspection::Inspection(
   
 Inspection::Inspection(
     std::vector<std::string> sensor_types_names, std::vector<std::string> sparse_types,
-    std::vector<std::string> sparse_units, std::vector<std::string> joint_names,
+    std::vector<std::string> sparse_units,
     std::string mesh_file_path, std::tuple<int, int> dense_sensor_resolution, std::string save_path,
   std::array<double, 3> inspection_space_3d_min, std::array<double, 3> inspection_space_3d_max,
   std::array<double,
   6> inspection_space_6d_min, std::array<double, 6> inspection_space_6d_max,
   std::vector<double> sparse_color_min_values, std::vector<double> sparse_color_max_values)
 : Inspection(
-    stringsToTypes(sensor_types_names), sparse_types, sparse_units, joint_names,
+    stringsToTypes(sensor_types_names), sparse_types, sparse_units,
     meshFromPath(
       mesh_file_path), dense_sensor_resolution, save_path, inspection_space_3d_min,
     inspection_space_3d_max, inspection_space_6d_min, inspection_space_6d_max,
@@ -265,6 +188,61 @@ void Inspection::initDB(const std::string &file_path)
   if(!s.ok()) {
     throw std::runtime_error("Could not open " + file_path +
       ". Maybe the file exists and has wrong permissions.");
+  }
+}
+
+void Inspection::setupSensors()
+{
+  int number_dense_sensors = 0;
+
+  for (auto sensor_type : sensor_types_) {
+    if (sensor_type == SensorType::SPARSE) {
+      sparse_usage_ = true;
+    } else {
+      dense_usage_ = true;
+      number_dense_sensors++;
+    }
+  }
+
+  if (sparse_usage_) {
+    if (sparse_types_.empty()) {
+      throw std::runtime_error(
+              "sparse_types must be provided if a sparse sensor is "
+              "used.");
+    }
+    // todo would be better to reuse the data by using a not container octree
+    for (uint64_t i = 0; i < sparse_types_.size(); i++) {
+      sparse_data_type_to_id_[sparse_types_[i]] = i;
+    }
+
+    sparse_min_values_ =
+      std::vector<double>(sparse_types_.size(), std::numeric_limits<double>::max());
+    sparse_max_values_ =
+      std::vector<double>(sparse_types_.size(), std::numeric_limits<double>::lowest());
+
+    same_min_max_colors_ = sparse_color_min_values_.size() == 0 && sparse_color_max_values_.size() == 0;
+    
+    if (
+      sparse_color_min_values_.size() != sparse_types_.size() ||
+      sparse_color_max_values_.size() != sparse_types_.size())
+    {
+      throw std::runtime_error(
+              "sparse_min_color_values and sparse_max_color_values must be the same size as "
+              "sparse_types");
+    } 
+  }
+
+  if (dense_usage_) {
+    // todo the camera infos should be provided during construction
+    intrinsic_ =
+      std::vector<open3d::camera::PinholeCameraIntrinsic>(number_dense_sensors); //TODO should be able to handle different sensors with different calibrations
+    intrinsic_recieved_ = std::vector<bool>(number_dense_sensors, false);
+    crop_box_ = open3d::geometry::AxisAlignedBoundingBox(cast(inspection_space_3d_.Min), cast(inspection_space_3d_.Max));
+    // todo we might also want to have multiple TSDF volumes for different dense sensor types,
+    // but also use multiple dense sensors of the same type for the same tsdf
+    // todo don't hardcode the parameters of the tsdf volume
+    tsdf_volume_ = std::make_shared<open3d::pipelines::integration::ScalableTSDFVolume>(
+      4.0 / 512.0, 0.04, open3d::pipelines::integration::TSDFVolumeColorType::RGB8);
   }
 }
 
@@ -342,7 +320,7 @@ std::array<double, 6> Inspection::getDensePoseFromId(const int sensor_id, const 
   assert(retrievedEntry.sensor_id() == sensor_id);
   assert(retrievedEntry.entry_nr() == sample_id);
   
-  return transformMatrixToPose(matrixFromFlatArray(retrievedEntry.extrinsic_world_matrix()));
+  return transformMatrixToPose(matrixFromFlatProtoArray(retrievedEntry.extrinsic_world_matrix()));
 }
 
 std::vector<std::array<double, 6>> Inspection::getMultiDensePoses(const int sensor_id, const int percentage) const
@@ -364,7 +342,7 @@ std::vector<std::array<double, 6>> Inspection::getMultiDensePoses(const int sens
     
     assert(retrievedEntry.sensor_id() == sensor_id);
 
-    all_poses.push_back(transformMatrixToPose(matrixFromFlatArray(retrievedEntry.extrinsic_world_matrix())));
+    all_poses.push_back(transformMatrixToPose(matrixFromFlatProtoArray(retrievedEntry.extrinsic_world_matrix())));
   }
 
   return all_poses;
@@ -583,10 +561,6 @@ void Inspection::clear()
     dense_pose_.clear();
     dense_orientation_.clear();
   }
-  if (robot_usage_) {
-    robot_timestamp_.clear();
-    robot_states_.clear();
-  }
   recreateOctrees();
 }
 
@@ -619,8 +593,7 @@ bool Inspection::saveMetaData()
     {"Dense", {
         {"Sensor resolution", dense_sensor_resolution_},
       }
-    },
-    {"Joint names", joint_names_},
+    }
   };
   
   // Serialize the metadata into a JSON string

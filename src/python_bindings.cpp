@@ -102,12 +102,11 @@ PYBIND11_MODULE(vinspect_py, m)
   .def(
     py::init<
       std::vector<std::string>, std::vector<std::string>, std::vector<std::string>,
-      std::vector<std::string>, std::string, std::tuple<int, int>, std::string,
+      std::string, std::tuple<int, int>, std::string,
       std::array<double, 3>, std::array<double, 3>, std::array<double, 6>, std::array<double, 6>,
       std::vector<double>, std::vector<double>>(),
     py::arg("sensor_types_names"), py::arg("sparse_types") = std::vector<std::string>(),
-    py::arg("sparse_units") = std::vector<std::string>(),
-    py::arg("joint_names") = std::vector<std::string>(), py::arg("mesh_file_path") = "",
+    py::arg("sparse_units") = std::vector<std::string>(), py::arg("mesh_file_path") = "",
     py::arg("dense_sensor_resolution") = std::tuple<int, int>(), py::arg("save_path") = "",
     py::arg("inspection_space_3d_min") = std::array<double, 3>(),
     py::arg("inspection_space_3d_max") = std::array<double, 3>(),
@@ -115,6 +114,7 @@ PYBIND11_MODULE(vinspect_py, m)
     py::arg("inspection_space_6d_max") = std::array<double, 6>(),
     py::arg("sparse_min_values") = std::vector<double>(),
     py::arg("sparse_max_values") = std::vector<double>())
+  .def(py::init<std::string>(), py::arg("load_path") = "")
   .def("add_sparse_measurement", &Inspection::addSparseMeasurement)
   .def("get_closest_sparse_measurement", &Inspection::getClosestSparseMeasurement)
   .def("get_integrated_images_count", &Inspection::getIntegratedImagesCount)
@@ -131,7 +131,6 @@ PYBIND11_MODULE(vinspect_py, m)
   .def("save_dense_reconstruction", &Inspection::saveDenseReconstruction)
   .def("set_intrinsic", &Inspection::setIntrinsic)
   .def("set_intrinsic2", &Inspection::setIntrinsic2);
-  m.def("load", &load);
   m.def("show_colored_mesh", &showColoredMesh);
   m.def("compute_colored_mesh", &computeColoredMesh);
   m.def("add_image_py", &addImagePy);
