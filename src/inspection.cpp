@@ -403,7 +403,7 @@ std::vector<double> Inspection::getDenseAtPose(
   throw std::runtime_error("Not implemented yet.");
 }
 
-// todo add a option that only a certain number of measurments are added at a specific
+// todo add a option that only a certain number of measurements are added at a specific
 // location. This way the data does
 // not get out of hand if the sensor rests at the same spot for a long time. can be implemented by
 // using the range function of the octree
@@ -484,7 +484,6 @@ void Inspection::addImageImpl(
   }
   tsdf_volume_->Integrate(image, intrinsic_[sensor_id], extrinsic_optical);
   std::array<double, 6> image_pose = transformMatrixToPose(extrinsic_world);
-  // todo we should append the images and depth images to the dense octree and save them
 
   {
     std::lock_guard<std::mutex> mtx_lock(mtx_);
@@ -571,11 +570,16 @@ void Inspection::clear()
 
 bool Inspection::saveMetaData()
 {
-  // todo we could clean up this function by using a utils function that creates the string
   // representation of the vectors
   // todo we could also add a date to the header just to know when it was recorded
   // todo could also add a field to store an arbitrary string as a note or comment
   json j = {
+    {"header", 
+      // Store the current unix timestamp
+      {"creation_time", std::chrono::system_clock::now().time_since_epoch().count()},
+      // Git hash of the version that created the file
+      {"git_hash", GIT_COMMIT_HASH }
+    },
     {"3D Inspection space",
       { "min", inspection_space_3d_.Min},
       { "max", inspection_space_3d_.Max}

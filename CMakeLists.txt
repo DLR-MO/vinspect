@@ -17,16 +17,31 @@ find_package(OpenCV REQUIRED)
 find_package(Python REQUIRED COMPONENTS Interpreter Development)
 find_package(Python3 REQUIRED)
 find_package(pybind11 REQUIRED)
-find_package(nlohmann_json REQUIRED)
-find_package(fmt REQUIRED)
-find_package(backward_ros REQUIRED)
 # fixes a problem in ubuntu24.04
 set_target_properties(pybind11::pybind11_headers PROPERTIES
   INTERFACE_INCLUDE_DIRECTORIES "/usr/include"
 )
+find_package(nlohmann_json REQUIRED)
+find_package(fmt REQUIRED)
+find_package(backward_ros REQUIRED)
+find_package(Git REQUIRED)
 find_package(TBB REQUIRED)
 find_package(Protobuf REQUIRED)
 find_package(rocksdb REQUIRED)
+
+# Make the git commit hash available in the code
+execute_process(
+  COMMAND git log -1 --format=%h
+  WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
+  OUTPUT_VARIABLE GIT_COMMIT_HASH
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
+if(GIT_COMMIT_HASH)
+  add_definitions(-DGIT_COMMIT_HASH=\"${GIT_COMMIT_HASH}\")
+else()
+  message(WARNING "Could not determine Git commit hash.")
+endif()
 
 protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS src/dense.proto)
 
