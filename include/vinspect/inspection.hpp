@@ -128,17 +128,17 @@ public:
   open3d::geometry::TriangleMesh getMesh() const;
 
   /**
-   * Returns the id of the closest sparse measurment to the given position.
+   * Returns the id of the closest sparse measurement to the given position.
    * @param position 3d position
    * @return id of the closest sparse measurement
    */
   int getClosestSparseMeasurement(const std::array<double, 3> & position) const;
 
   /**
-   * Returns  sparse measurments in the given radius
+   * Returns  sparse measurements in the given radius
    * @param position 3d position
    * @param radius maximum distance to be considered at this position
-   * @return ids of the sparse measurments in the radius
+   * @return ids of the sparse measurements in the radius
    */
   std::vector<uint64_t> getSparseMeasurementsInRadius(
     const std::array<double, 3> & position, double radius) const;
@@ -155,14 +155,14 @@ public:
     const std::string & value_type, const std::vector<uint64_t> & ids) const;
 
   /**
-   * Returns the id of the closest sparse measurment to the given position.
+   * Returns the id of the closest sparse measurement to the given position.
    * @param pose 6d pose
    * @return id of the closest sparse measurement
    */
   int getClosestDenseMeasurement(const std::array<double, 6> & pose) const;
 
   /**
-   * Returns the id of the closest sparse measurment to the given position.
+   * Returns the id of the closest sparse measurement to the given position.
    * @param pose 7d quaternion pose
    * @return id of the closest sparse measurement
    */
@@ -273,13 +273,13 @@ public:
   void setIntrinsic(open3d::camera::PinholeCameraIntrinsic intrinsic, int sensor_id)
   {
     intrinsic_[sensor_id] = intrinsic;
-    intrinsic_recieved_[sensor_id] = true;
+    intrinsic_received_[sensor_id] = true;
   }
 
   void setIntrinsic2( int sensor_id, int width, int height, double fx, double fy, double cx, double cy)
   {
     intrinsic_[sensor_id] = open3d::camera::PinholeCameraIntrinsic(width, height, fx, fy, cx, cy);
-    intrinsic_recieved_[sensor_id] = true;
+    intrinsic_received_[sensor_id] = true;
   }
 
   std::vector<std::string> getSparseUnits() {return sparse_units_;}
@@ -359,7 +359,7 @@ private:
 
   std::shared_ptr<open3d::pipelines::integration::ScalableTSDFVolume> tsdf_volume_;
   std::vector<open3d::camera::PinholeCameraIntrinsic> intrinsic_;
-  std::vector<bool> intrinsic_recieved_;
+  std::vector<bool> intrinsic_received_;
   open3d::geometry::AxisAlignedBoundingBox crop_box_;
 };
 }  // namespace vinspect

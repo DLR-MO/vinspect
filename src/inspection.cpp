@@ -234,7 +234,7 @@ void Inspection::setupSensors()
     // todo the camera infos should be provided during construction
     intrinsic_ =
       std::vector<open3d::camera::PinholeCameraIntrinsic>(number_dense_sensors); //TODO should be able to handle different sensors with different calibrations
-    intrinsic_recieved_ = std::vector<bool>(number_dense_sensors, false);
+    intrinsic_received_ = std::vector<bool>(number_dense_sensors, false);
     crop_box_ = open3d::geometry::AxisAlignedBoundingBox(cast(inspection_space_3d_.Min), cast(inspection_space_3d_.Max));
     // todo we might also want to have multiple TSDF volumes for different dense sensor types,
     // but also use multiple dense sensors of the same type for the same tsdf
@@ -348,12 +348,12 @@ std::vector<std::array<double, 6>> Inspection::getMultiDensePoses(const int sens
 
 std::vector<std::vector<std::array<u_int8_t, 3>>> Inspection::getImageFromId(const int sensor_id, const int sample_id) const
 {
-  std::string retriveKey = DB_KEY_DENSE_DATA_PREFIX + std::to_string(sensor_id) + "/" + std::to_string(sample_id);
-  std::string retrivedStringData;
+  std::string retrieveKey = DB_KEY_DENSE_DATA_PREFIX + std::to_string(sensor_id) + "/" + std::to_string(sample_id);
+  std::string retrievedStringData;
   std::vector<std::vector<std::array<u_int8_t, 3>>> image;
-  db_->Get(rocksdb::ReadOptions(), retriveKey, &retrivedStringData);
-  Dense retrivedEntry;
-  if (retrivedEntry.ParseFromString(retrivedStringData)) {
+  db_->Get(rocksdb::ReadOptions(), retrieveKey, &retrievedStringData);
+  Dense retrievedEntry;
+  if (retrievedEntry.ParseFromString(retrievedStringData)) {
     image.resize(
       get<1>(dense_sensor_resolution_),
       std::vector<std::array<uint8_t, 3>>(get<0>(dense_sensor_resolution_)));
@@ -363,9 +363,9 @@ std::vector<std::vector<std::array<u_int8_t, 3>>> Inspection::getImageFromId(con
       for (int col = 0; col < get<0>(dense_sensor_resolution_); col++) {
         image[row][col] =
         {
-          static_cast<u_int8_t>(retrivedEntry.color_image(index)), 
-          static_cast<u_int8_t>(retrivedEntry.color_image(index + 1)),
-          static_cast<u_int8_t>(retrivedEntry.color_image(index + 2))
+          static_cast<u_int8_t>(retrievedEntry.color_image(index)), 
+          static_cast<u_int8_t>(retrievedEntry.color_image(index + 1)),
+          static_cast<u_int8_t>(retrievedEntry.color_image(index + 2))
         };
         index += 3;
       }
@@ -472,7 +472,7 @@ void Inspection::addImageImpl(
   const Eigen::Matrix4d & extrinsic_optical, const Eigen::Matrix4d & extrinsic_world, bool store_in_database)
 {
   // we can only integrate if we already received the intrinsic calibration for this sensor
-  if (!intrinsic_recieved_[sensor_id]) {
+  if (!intrinsic_received_[sensor_id]) {
     std::cout << "No intrinsic calibration available for sensor " << sensor_id
               << " Will not integrate." << std::endl;
     return;
@@ -502,8 +502,8 @@ std::shared_ptr<open3d::geometry::TriangleMesh> Inspection::extractDenseReconstr
   // todo beware of copying the returned mesh
   std::shared_ptr<open3d::geometry::TriangleMesh> mesh = tsdf_volume_->ExtractTriangleMesh();
   // todo maybe give some warning if the whole mesh is cropped to 0 triangles
-  std::shared_ptr<open3d::geometry::TriangleMesh> croped_mesh = mesh->Crop(crop_box_);
-  return croped_mesh;
+  std::shared_ptr<open3d::geometry::TriangleMesh> cropped_mesh = mesh->Crop(crop_box_);
+  return cropped_mesh;
 }
 
 void Inspection::saveDenseReconstruction(std::string filename) const
