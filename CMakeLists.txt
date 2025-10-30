@@ -17,6 +17,9 @@ find_package(OpenCV REQUIRED)
 find_package(Python REQUIRED COMPONENTS Interpreter Development)
 find_package(Python3 REQUIRED)
 find_package(pybind11 REQUIRED)
+find_package(nlohmann_json REQUIRED)
+find_package(fmt REQUIRED)
+find_package(backward_ros REQUIRED)
 # fixes a problem in ubuntu24.04
 set_target_properties(pybind11::pybind11_headers PROPERTIES
   INTERFACE_INCLUDE_DIRECTORIES "/usr/include"
@@ -44,16 +47,19 @@ add_compile_options(-Wall -Wextra -Wpedantic)
 include_directories(include)
 include_directories(${CMAKE_CURRENT_BINARY_DIR}) #ToDo probably better to have all .proto file in one folder and inlcude that instead of ${CMAKE_CURRENT_BINARY_DIR}
 include_directories(${OpenCV_INCLUDE_DIRS})
+include_directories(${fmt_INCLUDE_DIRS})
 set(SOURCES src/inspection.cpp src/utils.cpp src/sparse_mesh.cpp ${PROTO_SRCS} ${PROTO_HDRS})
 
 add_library(${PROJECT_NAME} SHARED ${SOURCES})
 
-target_link_libraries(${PROJECT_NAME} TBB::tbb OpenMP::OpenMP_CXX rocksdb ${PROTOBUF_LIBRARY})
+target_link_libraries(${PROJECT_NAME} TBB::tbb OpenMP::OpenMP_CXX rocksdb fmt::fmt ${PROTOBUF_LIBRARY} ${fmt_LIBRARIES})
 
 ament_target_dependencies(${PROJECT_NAME}
   ament_cmake
   Open3D
   rocksdb
+  nlohmann_json
+  fmt
 )
 
 pybind11_add_module(vinspect_py src/python_bindings.cpp)
@@ -62,8 +68,10 @@ ament_target_dependencies(vinspect_py PUBLIC
   Python3
   Open3D
   rocksdb
+  nlohmann_json
+  fmt
 )
-target_link_libraries(vinspect_py PUBLIC vinspect rocksdb ${PROTOBUF_LIBRARY} ${OpenCV_LIBS})
+target_link_libraries(vinspect_py PUBLIC vinspect rocksdb fmt::fmt ${PROTOBUF_LIBRARY} ${OpenCV_LIBS} ${fmt_LIBRARIES})
 set_target_properties(vinspect_py PROPERTIES LINKER_LANGUAGE CXX)
 
 if(BUILD_TESTING)
@@ -100,6 +108,8 @@ ament_export_dependencies(Python3)
 ament_export_dependencies(TBB)
 ament_export_dependencies(Open3D)
 ament_export_libraries(rocksdb)
+ament_export_dependencies(nlohmann_json)
+ament_export_dependencies(fmt)
 ament_export_libraries(${PROJECT_NAME})
 ament_export_include_directories(include)
 ament_export_include_directories(${CMAKE_CURRENT_BINARY_DIR}) #ToDo See line: 34

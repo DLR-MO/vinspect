@@ -45,39 +45,6 @@ std::vector<SensorType> stringsToTypes(const std::vector<std::string> & types)
   return result;
 }
 
-std::string array3ToString(const std::array<double, 3> & array)
-{
-  return "(" + std::to_string(array[0]) + "," + std::to_string(array[1]) + "," +
-         std::to_string(array[2]) + ")";
-}
-
-std::string array4ToString(const std::array<double, 4> & array)
-{
-  return "(" + std::to_string(array[0]) + "," + std::to_string(array[1]) + "," +
-         std::to_string(array[2]) + "," + std::to_string(array[3]) + ")";
-}
-
-std::string vectorToString(const std::vector<double> & vector)
-{
-  std::stringstream ss;
-  ss << "(";
-  for (size_t i = 0; i < vector.size(); i++) {
-    ss << vector[i];
-    if (i < vector.size() - 1) {
-      ss << ",";
-    }
-  }
-  ss << ")";
-  return ss.str();
-}
-
-std::string vectorToString(const Eigen::Vector3d & vector)
-{
-  std::stringstream ss;
-  ss << "(" << vector.x() << ", " << vector.y() << ", " << vector.z() << ")";
-  return ss.str();
-}
-
 open3d::geometry::TriangleMesh meshFromPath(const std::string & mesh_file_path)
 {
   open3d::geometry::TriangleMesh mesh;
@@ -86,33 +53,6 @@ open3d::geometry::TriangleMesh meshFromPath(const std::string & mesh_file_path)
   }else if (!open3d::io::ReadTriangleMesh(mesh_file_path, mesh)) {
     throw std::runtime_error("Cannot read mesh file: " + mesh_file_path);
   }
-  return mesh;
-}
-
-open3d::geometry::TriangleMesh meshFromFilestream(std::ifstream & f)
-{
-  std::string line;
-  std::getline(f, line);
-  if (line != "Original mesh: MESH_START") {
-    std::cout << line << std::endl;
-    throw std::runtime_error("Could not find MESH_START in file.");
-  }
-  std::string mesh_ascii;
-  while (true) {
-    std::getline(f, line);
-    if (line == "MESH_END") {
-      break;
-    }
-    mesh_ascii += line + "\n";
-  }
-  open3d::geometry::TriangleMesh mesh;
-  // write mesh data to file as we can only read meshes from files
-  std::string mesh_path = "/tmp/mesh.ply";
-  std::ofstream tmp_file(mesh_path);
-  tmp_file << mesh_ascii;
-  tmp_file.flush();
-  open3d::io::ReadTriangleMesh(mesh_path, mesh);
-  std::remove(mesh_path.c_str());
   return mesh;
 }
 
@@ -137,51 +77,6 @@ std::vector<std::string> splitStringArray(
     getline(ss, substr, ',');
     result.push_back(substr);
   }
-  return result;
-}
-
-std::string writeArray(const std::string & name, const std::vector<double> & values)
-{
-  std::string result;
-  result += name;
-  result += ": [";
-  for (uint64_t i = 0; i < values.size(); i++) {
-    result += "" + std::to_string(values[i]) + "";
-    if (i != values.size() - 1) {
-      result += ",";
-    }
-  }
-  result += "]\n";
-  return result;
-}
-
-std::string writeArray(const std::string & name, const std::vector<std::string> & values)
-{
-  std::string result;
-  result += name;
-  result += ": [";
-  for (uint64_t i = 0; i < values.size(); i++) {
-    result += "" + values[i] + "";
-    if (i != values.size() - 1) {
-      result += ",";
-    }
-  }
-  result += "]\n";
-  return result;
-}
-
-std::string writeArray(const std::string & name, const std::vector<SensorType> & values)
-{
-  std::string result;
-  result += name;
-  result += ": [";
-  for (uint64_t i = 0; i < values.size(); i++) {
-    result += "" + typeToString(values[i]) + "";
-    if (i != values.size() - 1) {
-      result += ",";
-    }
-  }
-  result += "]\n";
   return result;
 }
 
@@ -239,6 +134,108 @@ bool isPointInSpace(
   const OrthoTree::BoundingBox3D * inspection_space, const std::array<double, 3> position)
 {
   return inspection_space->Min[0] <= position[0];
+}
+
+std::array<double, 6> transformMatrixToPose(const Eigen::Matrix4d & extrinsic_matrix)
+{
+  std::array<double, 6> pose;
+  Eigen::Vector3d translation = extrinsic_matrix.block<3, 1>(0, 3);
+
+  Eigen::Matrix3d rotationMatrix = extrinsic_matrix.block<3, 3>(0, 0);
+  Eigen::EulerAnglesXYZd euler_angles(rotationMatrix);
+
+  pose[0] = translation[0];
+  pose[1] = translation[1];
+  pose[2] = translation[2];
+
+  pose[3] = euler_angles.alpha();
+  pose[4] = euler_angles.beta();
+  pose[5] = euler_angles.gamma();
+
+  return pose;
+}
+
+
+std::array<double, 6> quatToEulerPose(const std::array<double, 7> quat_pose)
+{
+  std::array<double, 6> euler_pose;
+
+  Eigen::Quaterniond quat(quat_pose[6], quat_pose[3], quat_pose[4], quat_pose[5]);
+  Eigen::EulerAnglesXYZd euler_angles(quat.toRotationMatrix());
+
+  euler_pose[0] = quat_pose[0];
+  euler_pose[1] = quat_pose[1];
+  euler_pose[2] = quat_pose[2];
+
+  euler_pose[3] = euler_angles.alpha();
+  euler_pose[4] = euler_angles.beta();
+  euler_pose[5] = euler_angles.gamma();
+
+  return euler_pose;
+}
+
+std::array<double, 7> eulerToQuatPose(const std::array<double, 6> euler_pose)
+{
+  std::array<double, 7> quat_pose;
+
+  Eigen::Quaterniond q;
+  q = Eigen::AngleAxisd(euler_pose[3], Eigen::Vector3d::UnitX()) * Eigen::AngleAxisd(
+    euler_pose[4],
+    Eigen::Vector3d::UnitY()) * Eigen::AngleAxisd(euler_pose[5], Eigen::Vector3d::UnitZ());
+
+  quat_pose[0] = euler_pose[0];
+  quat_pose[1] = euler_pose[1];
+  quat_pose[2] = euler_pose[2];
+
+  quat_pose[3] = q.x();
+  quat_pose[4] = q.y();
+  quat_pose[5] = q.z();
+  quat_pose[6] = q.w();
+
+  return quat_pose;
+}
+
+std::string serializedStructForDenseEntry(
+  int i,
+  int sensor_id,
+  const std::vector<u_int8_t> & color_img,
+  const std::vector<u_int8_t> & depth_img,
+  const Eigen::Matrix4d & extrinsic_optical, 
+  const Eigen::Matrix4d & extrinsic_world
+)
+{
+  //Fill the Protobuf object
+
+  Dense denseEntry;
+  denseEntry.set_entry_nr(i);
+  denseEntry.set_sensor_id(sensor_id);
+
+  auto * extrinsic_optical_matrix_field = denseEntry.mutable_extrinsic_optical_matrix();
+  extrinsic_optical_matrix_field->Add(extrinsic_optical.reshaped().begin(), extrinsic_optical.reshaped().end());
+
+  auto * extrinsic_world_field = denseEntry.mutable_extrinsic_world_matrix();
+  extrinsic_world_field->Add(extrinsic_world.reshaped().begin(), extrinsic_world.reshaped().end());
+
+  auto * color_image_field = denseEntry.mutable_color_image();
+  color_image_field->Add(color_img.begin(), color_img.end());
+
+  auto * depth_image_field = denseEntry.mutable_depth_image();
+  depth_image_field->Add(depth_img.begin(), depth_img.end());
+
+  return denseEntry.SerializeAsString();
+}
+
+Eigen::Matrix4d matrixFromFlatArray(const google::protobuf::RepeatedField<double>& flat_array){
+  if (flat_array.size() != 16) {
+        throw std::invalid_argument("Extrinsic optical matrix must have exactly 16 elements");
+  }
+  Eigen::Matrix4d matrix;
+  for (int i = 0; i < 16; ++i) {
+      int row = i / 4;
+      int col = i % 4;
+      matrix(row, col) = flat_array[i];
+  }
+  return matrix;
 }
 
 }  // namespace vinspect

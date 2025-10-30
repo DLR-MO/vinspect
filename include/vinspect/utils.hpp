@@ -18,6 +18,10 @@
 #include "open3d/geometry/TriangleMesh.h"
 #include "open3d/io/TriangleMeshIO.h"
 #include "vinspect/pose_tree/octree.h"
+#include "dense.pb.h"
+
+#include <unsupported/Eigen/EulerAngles>
+
 namespace vinspect
 {
 
@@ -34,17 +38,7 @@ std::string typeToString(const SensorType type);
 SensorType stringToType(const std::string & type);
 std::vector<SensorType> stringsToTypes(const std::vector<std::string> & types);
 
-std::string writeArray(const std::string & name, const std::vector<double> & values);
-std::string writeArray(const std::string & name, const std::vector<std::string> & values);
-std::string writeArray(const std::string & name, const std::vector<SensorType> & values);
-
-std::string array3ToString(const std::array<double, 3> & array);
-std::string array4ToString(const std::array<double, 4> & array);
-std::string vectorToString(const std::vector<double> & vector);
-std::string vectorToString(const Eigen::Vector3d & vector);
-
 open3d::geometry::TriangleMesh meshFromPath(const std::string & mesh_file_path);
-open3d::geometry::TriangleMesh meshFromFilestream(std::ifstream & f);
 
 float euclideanDistance(
   const double x1, const double y1, const double z1, const double x2, const double y2,
@@ -54,10 +48,39 @@ std::vector<std::string> splitStringArray(
   const std::string str, const std::string delimiter_start = "[",
   const std::string delimiter_end = "]");
 
-Eigen::Vector3d hsv2rgb(const double h, const double s, const double v);
+  Eigen::Vector3d hsv2rgb(const double h, const double s, const double v);
+  
+  bool isPointInSpace(
+    const OrthoTree::BoundingBox3D * inspection_space, const std::array<double, 3> position);
+    
+  /**
+   * Extracts the pose from an 4D extrisic matrix
+   * @param extrinsic_matrix extrinsic matrix
+   * @return pose of with orientation as euler angles
+   */  
+  std::array<double, 6> transformMatrixToPose(const Eigen::Matrix4d & extrinsic_matrix);
+  std::array<double, 6> quatToEulerPose(const std::array<double, 7> quat_pose);
+  std::array<double, 7> eulerToQuatPose(const std::array<double, 6> euler_pose);
+  
+  Eigen::Matrix4d matrixFromFlatArray(const google::protobuf::RepeatedField<double>& flat_array);
 
-bool isPointInSpace(
-  const OrthoTree::BoundingBox3D * inspection_space, const std::array<double, 3> position);
+  /**
+   * Serializes a filled protobuf object.
+   * @param i
+   * @param sensor_id sensor id of the entry
+   * @param color_img color images to be saved
+   * @param depth_img depth images to be saved
+   * @param extrinsic_optical_matrix the extrinsic calibration of the camera
+   * @param extrinsic_world_matrix the location of the camera in the world
+   */
+  std::string serializedStructForDenseEntry(
+    int i,
+    int sensor_id,
+    const std::vector<u_int8_t> & color_img,
+    const std::vector<u_int8_t> & depth_img,
+    const Eigen::Matrix4d & extrinsic_optical, 
+    const Eigen::Matrix4d & extrinsic_world
+  );
 
 }  // namespace vinspect
 #endif  // VINSPECT__UTILS_H_

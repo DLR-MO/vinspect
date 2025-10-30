@@ -42,7 +42,7 @@ void computeColoredMesh(Inspection & inspection, double point_radius)
   open3d::geometry::TriangleMesh mesh = sparse_mesh.createMesh(point_radius, false, 0, 0);
 }
 
-void integrateImagePy(
+void addImagePy(
   Inspection & inspection,
   const py::array_t<uint8_t> & color_image, std::string color_encoding,
   const py::array_t<uint16_t> & depth_image, std::string depth_encoding, float depth_scale,
@@ -90,7 +90,7 @@ void integrateImagePy(
   std::shared_ptr<open3d::geometry::RGBDImage> rgbd =
     open3d::geometry::RGBDImage::CreateFromColorAndDepth(color_img, depth_img, depth_scale,
       depth_trunc, false);
-  inspection.integrateImage(*rgbd.get(), sensor_id, extrinsic_optical, extrinsic_world);
+  inspection.addImage(*rgbd.get(), sensor_id, extrinsic_optical, extrinsic_world);
 }
 
 
@@ -116,7 +116,6 @@ PYBIND11_MODULE(vinspect_py, m)
     py::arg("sparse_min_values") = std::vector<double>(),
     py::arg("sparse_max_values") = std::vector<double>())
   .def("add_sparse_measurement", &Inspection::addSparseMeasurement)
-  .def("finish", &Inspection::finish)
   .def("get_closest_sparse_measurement", &Inspection::getClosestSparseMeasurement)
   .def("get_integrated_images_count", &Inspection::getIntegratedImagesCount)
   .def("get_sparse_measurements_in_radius", &Inspection::getSparseMeasurementsInRadius)
@@ -126,17 +125,16 @@ PYBIND11_MODULE(vinspect_py, m)
   .def("get_sparse_value", &Inspection::getSparseValue)
   .def("get_sparse_user_color", &Inspection::getSparseUserColor)
   .def("get_sparse_timestamp", &Inspection::getSparseTimestamp)
-  .def("integrate_image", &Inspection::integrateImage)
+  .def("add_image", &Inspection::addImage)
   .def("get_mesh", &Inspection::getMesh)
   .def("reinitialize_TSDF", &Inspection::reinitializeTSDF)
-  .def("save", &Inspection::save)
   .def("save_dense_reconstruction", &Inspection::saveDenseReconstruction)
   .def("set_intrinsic", &Inspection::setIntrinsic)
   .def("set_intrinsic2", &Inspection::setIntrinsic2);
   m.def("load", &load);
   m.def("show_colored_mesh", &showColoredMesh);
   m.def("compute_colored_mesh", &computeColoredMesh);
-  m.def("integrate_image_py", &integrateImagePy);
+  m.def("add_image_py", &addImagePy);
 }
 }  // namespace vinspect
 #endif
