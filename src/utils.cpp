@@ -7,44 +7,6 @@
 namespace vinspect
 {
 
-std::string typeToString(const SensorType type)
-{
-  switch (type) {
-    case SensorType::RGB:
-      return "RGB";
-    case SensorType::RGBD:
-      return "RGBD";
-    case SensorType::DEPTH:
-      return "Depth";
-    case SensorType::SPARSE:
-      return "SPARSE";
-  }
-  return "";
-}
-
-SensorType stringToType(const std::string & type)
-{
-  if (type == "RGB") {
-    return SensorType::RGB;
-  } else if (type == "RGBD") {
-    return SensorType::RGBD;
-  } else if (type == "Depth") {
-    return SensorType::DEPTH;
-  } else if (type == "SPARSE") {
-    return SensorType::SPARSE;
-  }
-  throw std::invalid_argument("Invalid sensor type: " + type);
-}
-
-std::vector<SensorType> stringsToTypes(const std::vector<std::string> & types)
-{
-  std::vector<SensorType> result;
-  for (const auto & type : types) {
-    result.push_back(stringToType(type));
-  }
-  return result;
-}
-
 open3d::geometry::TriangleMesh meshFromPath(const std::string & mesh_file_path)
 {
   open3d::geometry::TriangleMesh mesh;

@@ -9,6 +9,7 @@
 #include <pybind11/stl.h>
 #include <vinspect/sparse_mesh.hpp>
 #include <vinspect/inspection.hpp>
+#include <vinspect/sensors.hpp>
 #include <vinspect/utils.hpp>
 
 #include <vector>
@@ -101,19 +102,23 @@ PYBIND11_MODULE(vinspect_py, m)
   py::class_<Inspection, std::unique_ptr<Inspection>>(m, "Inspection")
   .def(
     py::init<
-      std::vector<std::string>, std::vector<std::string>, std::vector<std::string>,
-      std::string, std::tuple<int, int>, std::string,
-      std::array<double, 3>, std::array<double, 3>, std::array<double, 6>, std::array<double, 6>,
-      std::vector<double>, std::vector<double>>(),
-    py::arg("sensor_types_names"), py::arg("sparse_types") = std::vector<std::string>(),
-    py::arg("sparse_units") = std::vector<std::string>(), py::arg("mesh_file_path") = "",
-    py::arg("dense_sensor_resolution") = std::tuple<int, int>(), py::arg("save_path") = "",
+      std::vector<SparseSensor>, 
+      std::vector<DenseSensor>,
+      std::string, 
+      std::string,
+      std::array<double, 3>, 
+      std::array<double, 3>, 
+      std::array<double, 6>, 
+      std::array<double, 6>>(),
+    py::arg("sparse_sensors"), 
+    py::arg("dense_sensors"), 
+    py::arg("reference_mesh_file_path") = "",
+    py::arg("save_path") = "",
     py::arg("inspection_space_3d_min") = std::array<double, 3>(),
     py::arg("inspection_space_3d_max") = std::array<double, 3>(),
     py::arg("inspection_space_6d_min") = std::array<double, 6>(),
-    py::arg("inspection_space_6d_max") = std::array<double, 6>(),
-    py::arg("sparse_min_values") = std::vector<double>(),
-    py::arg("sparse_max_values") = std::vector<double>())
+    py::arg("inspection_space_6d_max") = std::array<double, 6>()
+  )
   .def(py::init<std::string>(), py::arg("load_path") = "")
   .def("add_sparse_measurement", &Inspection::addSparseMeasurement)
   .def("get_closest_sparse_measurement", &Inspection::getClosestSparseMeasurement)
@@ -131,6 +136,33 @@ PYBIND11_MODULE(vinspect_py, m)
   .def("save_dense_reconstruction", &Inspection::saveDenseReconstruction)
   .def("set_intrinsic", &Inspection::setIntrinsic)
   .def("set_intrinsic2", &Inspection::setIntrinsic2);
+
+  py::class_<ValueInfo, std::unique_ptr<ValueInfo>>(m, "ValueInfo")
+  .def(
+    py::init<std::string, std::string>(),
+    py::arg("name"), py::arg("unit")
+  )
+  .def_readwrite("name", &ValueInfo::name)
+  .def_readwrite("unit", &ValueInfo::unit);
+
+  py::class_<SparseSensor, std::unique_ptr<SparseSensor>>(m, "SparseSensor")
+  .def(
+    py::init<int, std::vector<ValueInfo>>(),
+    py::arg("id"), py::arg("value_infos")
+  )
+  .def("get_value_infos", &SparseSensor::getValueInfos)
+  .def("get_num_values", &SparseSensor::numValues);
+
+  py::class_<DenseSensor, std::unique_ptr<DenseSensor>>(m, "DenseSensor")
+  .def(
+    py::init<int, unsigned int, unsigned int>(),
+    py::arg("id"), py::arg("width"), py::arg("height")
+  )
+  .def("num_pixels", &DenseSensor::numPixels)
+  .def("get_width", &DenseSensor::getWidth)
+  .def("get_height", &DenseSensor::getHeight)
+  .def("get_resolution", &DenseSensor::getResolution);
+
   m.def("show_colored_mesh", &showColoredMesh);
   m.def("compute_colored_mesh", &computeColoredMesh);
   m.def("add_image_py", &addImagePy);

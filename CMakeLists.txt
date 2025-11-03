@@ -21,13 +21,13 @@ find_package(pybind11 REQUIRED)
 set_target_properties(pybind11::pybind11_headers PROPERTIES
   INTERFACE_INCLUDE_DIRECTORIES "/usr/include"
 )
-find_package(nlohmann_json REQUIRED)
-find_package(fmt REQUIRED)
 find_package(backward_ros REQUIRED)
+find_package(fmt REQUIRED)
 find_package(Git REQUIRED)
-find_package(TBB REQUIRED)
+find_package(nlohmann_json REQUIRED)
 find_package(Protobuf REQUIRED)
 find_package(rocksdb REQUIRED)
+find_package(TBB REQUIRED)
 
 # Make the git commit hash available in the code
 execute_process(
@@ -118,13 +118,13 @@ install(
   DESTINATION lib/python3/dist-packages/${PROJECT_NAME}
 )
 
+ament_export_dependencies(fmt)
+ament_export_dependencies(nlohmann_json)
+ament_export_dependencies(Open3D)
 ament_export_dependencies(pybind11)
 ament_export_dependencies(Python3)
 ament_export_dependencies(TBB)
-ament_export_dependencies(Open3D)
 ament_export_libraries(rocksdb)
-ament_export_dependencies(nlohmann_json)
-ament_export_dependencies(fmt)
 ament_export_libraries(${PROJECT_NAME})
 ament_export_include_directories(include)
 ament_export_include_directories(${CMAKE_CURRENT_BINARY_DIR}) #ToDo See line: 34

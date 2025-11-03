@@ -109,7 +109,7 @@ void SparseMesh::normalizeValues(
     // The min and max values can be set to allow cutoffs to both sides.
     normalized_value_array_[i] = std::max(
       0.0, std::min(
-        1.0, (value_array->at(i)[meshed_value_type_index_] - meshed_min_value_) /
+        1.0, (value_array->at(i)[meshed_value_name_index_] - meshed_min_value_) /
         (meshed_max_value_ - meshed_min_value_)));
   }
 }
@@ -132,7 +132,7 @@ SparseMesh::SparseMesh(Inspection & inspection)
   meshed_mean_min_max_ = -1;
   meshed_point_radius_ = -1.0;
   meshed_use_own_color_ = false;
-  meshed_value_type_index_ = -1;
+  meshed_value_name_index_ = -1;
   resetMesh();
 }
 
@@ -185,16 +185,16 @@ void SparseMesh::setMergeColors(const int mean_min_max)
  */
 const open3d::geometry::TriangleMesh & SparseMesh::createMesh(
   const float point_radius, const bool use_own_color, const int mean_min_max,
-  const int value_type_index)
+  const int value_name_index)
 {
   // Check if the merging method has changed. If so, we need to completly regenerate the mesh.
   if (
     point_radius != meshed_point_radius_ || use_own_color != meshed_use_own_color_ ||
-    value_type_index != meshed_value_type_index_)
+    value_name_index != meshed_value_name_index_)
   {
     meshed_point_radius_ = point_radius;
     meshed_use_own_color_ = use_own_color;
-    meshed_value_type_index_ = value_type_index;
+    meshed_value_name_index_ = value_name_index;
     resetMesh();
   }
   if (mean_min_max != meshed_mean_min_max_) {
@@ -212,8 +212,8 @@ const open3d::geometry::TriangleMesh & SparseMesh::createMesh(
   if (!use_own_color) {
     // we ony need these normalized values if we compute the color.
     // these are just the type of values we want to show
-    const double new_values_min = inspection_.getSparseMin()[value_type_index];
-    const double new_values_max = inspection_.getSparseMax()[value_type_index];
+    const double new_values_min = inspection_.getSparseMin(value_name_index);
+    const double new_values_max = inspection_.getSparseMax(value_name_index);
     // when the min and max values change, we need to regenerate the mesh
     if (new_values_min != meshed_min_value_ || new_values_max != meshed_max_value_) {
       resetMesh();
