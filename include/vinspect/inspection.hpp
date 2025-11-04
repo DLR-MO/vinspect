@@ -138,6 +138,8 @@ public:
     throw std::runtime_error(fmt::format("No sparse sensor with ID {}!", sensor_id));
   }
 
+  inline bool getDenseUsage() const { return dense_sensors_.size() > 0; }
+
   /**
    * Returns the dense sensor object given an id
    * @param sensor_id sensor id
