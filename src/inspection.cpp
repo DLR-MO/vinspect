@@ -15,7 +15,6 @@ Inspection::Inspection(const std::string & file_path) {
 
   // Initialize the database
   initDB(file_path);
-
   
   // Load static metadata
   std::string serialized_meta_data;
@@ -598,6 +597,12 @@ bool Inspection::saveMetaData()
 
 void Inspection::storeMesh(const std::string &key, const open3d::geometry::TriangleMesh &mesh)
 {
+  // Check if the mesh has any vertices
+  if (mesh.vertices_.size() == 0)
+  {
+    return;
+  }
+
   // Open3d only supports export to files, not byte streams, we we need to use a temp file
   std::string temp_file = fmt::format("/tmp/vinspect_mesh_{}.ply", std::rand());
   open3d::io::WriteTriangleMesh(temp_file, mesh, true);
@@ -629,7 +634,14 @@ void Inspection::loadMesh(const std::string &key, open3d::geometry::TriangleMesh
 {
   // Get mesh from db 
   std::string serialized_mesh;
-  if (!db_->Get(rocksdb::ReadOptions(), key, &serialized_mesh).ok())
+
+  auto response = db_->Get(rocksdb::ReadOptions(), key, &serialized_mesh);
+  if (response.IsNotFound())
+  {
+    // No mesh present, initialize with empty mesh instead
+    mesh = open3d::geometry::TriangleMesh();
+    return;
+  } else if (!response.ok())
   {
     throw std::runtime_error("Could load mesh from db");
   }
