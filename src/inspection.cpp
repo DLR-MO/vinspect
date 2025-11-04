@@ -46,7 +46,7 @@ Inspection::Inspection(const std::string & file_path) {
   std::cout << "Processing measurements..." << std::endl;
 
   // Iterate over sparse measurements
-  if (sparse_sensors_.size() > 0)
+  if (getSparseUsage())
   {
     // Create an iterator
     auto it = std::unique_ptr<rocksdb::Iterator>(db_->NewIterator(rocksdb::ReadOptions()));
@@ -73,7 +73,7 @@ Inspection::Inspection(const std::string & file_path) {
     }
   }
   // Iterate over dense measurements
-  if(dense_sensors_.size() > 0)
+  if(getDenseUsage())
   {
     // Create an iterator
     auto it = std::unique_ptr<rocksdb::Iterator>(db_->NewIterator(rocksdb::ReadOptions()));
@@ -182,7 +182,7 @@ void Inspection::initDB(const std::string &file_path)
 
 void Inspection::setupSensors()
 {
-  if (sparse_sensors_.size() > 0) {
+  if (getSparseUsage()) {
     // Check that each sparse sensor has the same ValueInfos
     // todo this check can be omitted if more complex multi sensor aggregation is added
     std::optional<std::vector<ValueInfo>> common_value_info;
@@ -202,7 +202,7 @@ void Inspection::setupSensors()
       std::vector<double>(common_value_info.value().size(), std::numeric_limits<double>::lowest());
   }
 
-  if (dense_sensors_.size() > 0) {
+  if (getDenseUsage()) {
     crop_box_ = open3d::geometry::AxisAlignedBoundingBox(cast(inspection_space_3d_.Min), cast(inspection_space_3d_.Max));
     // todo we might also want to have multiple TSDF volumes for different dense sensor types,
     // but also use multiple dense sensors of the same type for the same tsdf
@@ -508,11 +508,11 @@ void Inspection::saveDenseReconstruction(std::string filename) const
 
 void Inspection::recreateOctrees()
 {
-  if (sparse_sensors_.size() > 0) {
+  if (getSparseUsage()) {
     sparse_octree_.Clear();
     sparse_octree_ = OrthoTree::OctreePointC(sparse_position_, OCTREE_DEPTH, inspection_space_3d_);
   }
-  if (dense_sensors_.size() > 0) {
+  if (getDenseUsage()) {
     dense_posetree_.Clear();
     dense_posetree_ = OrthoTree::TreePointPoseND<6, {0, 0, 0, 1, 1, 1}, std::ratio<1, 2>, double>();
     dense_posetree_.Create(
@@ -543,7 +543,7 @@ void Inspection::clear()
   sparse_orientation_.clear();
   sparse_value_.clear();
   sparse_user_color_.clear();
-  if (sparse_sensors_.size() > 0)
+  if (getSparseUsage())
   {
     auto num_sparse_types = sparse_sensors_[0].numValues();
     sparse_min_values_ = std::vector<double>(num_sparse_types, std::numeric_limits<double>::max());
