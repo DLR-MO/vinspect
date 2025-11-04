@@ -7,6 +7,7 @@
 
 #include <math.h>
 
+#include <cassert> 
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -24,19 +25,6 @@
 
 namespace vinspect
 {
-
-// Enum representing different usable sensor types
-enum class SensorType
-{
-  RGB = 0,
-  RGBD = 1,
-  DEPTH = 2,
-  SPARSE = 3
-};
-
-std::string typeToString(const SensorType type);
-SensorType stringToType(const std::string & type);
-std::vector<SensorType> stringsToTypes(const std::vector<std::string> & types);
 
 open3d::geometry::TriangleMesh meshFromPath(const std::string & mesh_file_path);
 
@@ -88,6 +76,17 @@ std::vector<std::string> splitStringArray(
 
   inline std::array<double, 3> cast(const Eigen::Vector3d& arr) {
     return std::array<double, 3>({arr.x(), arr.y(), arr.z()});
+  }
+
+  // Function template for converting std::vector to std::array
+  template<typename T, std::size_t N>
+  std::array<T, N> vec2array(const std::vector<T>& vec) {
+    assert(vec.size() == N);
+    // Create an array of appropriate type and size
+    std::array<T, N> arr;
+    // Use memcpy to copy data from vector to array
+    std::memcpy(arr.data(), vec.data(), N * sizeof(T));
+    return arr;
   }
 
 }  // namespace vinspect
