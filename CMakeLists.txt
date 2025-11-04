@@ -5,6 +5,11 @@ project(vinspect)
 set(CMAKE_C_COMPILER "gcc-11")
 set(CMAKE_CXX_COMPILER "g++-11")
 
+# Build with release optimizations and debug symbols by default
+if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE RelWithDebug)
+endif()
+
 set(CMAKE_CXX_STANDARD 20)
 set(PYBIND11_FINDPYTHON ON)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/")

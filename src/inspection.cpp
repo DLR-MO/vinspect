@@ -16,13 +16,20 @@ Inspection::Inspection(const std::string & file_path) {
   // Initialize the database
   initDB(file_path);
 
+  
   // Load static metadata
   std::string serialized_meta_data;
   if(!db_->Get(rocksdb::ReadOptions(), DB_KEY_STATIC_METADATA, &serialized_meta_data).ok()) {
     throw std::runtime_error("Malformed project file");
   }
   json static_metadata = json::parse(serialized_meta_data);
+  
+  std::cout << "--------- Metadata ----------" << std::endl;
 
+  std::cout << serialized_meta_data << std::endl;
+
+  std::cout << "-----------------------------" << std::endl;
+  
   inspection_space_3d_ = {
     .Min = static_metadata["3D Inspection space"]["min"], 
     .Max = static_metadata["3D Inspection space"]["max"]
@@ -33,18 +40,18 @@ Inspection::Inspection(const std::string & file_path) {
   };
 
   // Deserialize sensors
-  sparse_sensors_ = static_metadata["Sparse sensors"];
-  dense_sensors_ = static_metadata["Dense sensors"];
-
+  sparse_sensors_ = static_metadata["Sensors"]["Sparse"];
+  dense_sensors_ = static_metadata["Sensors"]["Dense"];
+  
   // Make common initializations for both dense and sparse sensors
   setupSensors();
-
+  
   recreateOctrees();
-
+  
   loadMesh(DB_KEY_REFERENCE_MESH, reference_mesh_);
-
+  
   std::cout << "Processing measurements..." << std::endl;
-
+  
   // Iterate over sparse measurements
   if (getSparseUsage())
   {
@@ -509,11 +516,9 @@ void Inspection::saveDenseReconstruction(std::string filename) const
 void Inspection::recreateOctrees()
 {
   if (getSparseUsage()) {
-    sparse_octree_.Clear();
     sparse_octree_ = OrthoTree::OctreePointC(sparse_position_, OCTREE_DEPTH, inspection_space_3d_);
   }
   if (getDenseUsage()) {
-    dense_posetree_.Clear();
     dense_posetree_ = OrthoTree::TreePointPoseND<6, {0, 0, 0, 1, 1, 1}, std::ratio<1, 2>, double>();
     dense_posetree_.Create(
       dense_posetree_, dense_pose_, OCTREE_DEPTH, inspection_space_6d_,
@@ -563,20 +568,20 @@ void Inspection::clear()
 bool Inspection::saveMetaData()
 {
   json j = {
-    {"header", 
+    {"header",  {
       // Store the current unix timestamp
       {"Creation time", std::chrono::system_clock::now().time_since_epoch().count()},
       // Git hash of the version that created the file
       {"Git hash", GIT_COMMIT_HASH }
-    },
-    {"3D Inspection space",
+    }},
+    {"3D Inspection space", {
       { "min", inspection_space_3d_.Min},
       { "max", inspection_space_3d_.Max}
-    },
-    {"6D Inspection space",
+    }},
+    {"6D Inspection space", {
       { "min", inspection_space_6d_.Min},
       { "max", inspection_space_6d_.Max}
-    },
+    }},
     {"Sensors", {
        {"Sparse", sparse_sensors_},
        {"Dense", dense_sensors_}
@@ -585,7 +590,7 @@ bool Inspection::saveMetaData()
   };
   
   // Serialize the metadata into a JSON string
-  std::string metadata = j.dump();
+  std::string metadata = j.dump(2);
 
   // Store in the database
   return db_->Put(rocksdb::WriteOptions(), DB_KEY_STATIC_METADATA, metadata).ok();
