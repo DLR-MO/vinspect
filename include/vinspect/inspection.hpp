@@ -55,10 +55,10 @@ https://eigen.tuxfamily.org/dox/unsupported/group__EulerAngles__Module.html
 
 #define DB_NUMBER_DIGITS_FOR_IDX 24
 
-#define DB_KEY_STATIC_METADATA "/metadata/static"
-#define DB_KEY_REFERENCE_MESH "/reference/mesh"
-#define DB_KEY_SPARSE_DATA_PREFIX "/data/sparse/"
-#define DB_KEY_DENSE_DATA_PREFIX "/data/dense/"
+#define DB_KEY_STATIC_METADATA std::string("/metadata/static")
+#define DB_KEY_REFERENCE_MESH std::string("/reference/mesh")
+#define DB_KEY_SPARSE_DATA_PREFIX std::string("/data/sparse/")
+#define DB_KEY_DENSE_DATA_PREFIX std::string("/data/dense/")
 
 using json = nlohmann::json;
 
