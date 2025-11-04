@@ -119,7 +119,7 @@ PYBIND11_MODULE(vinspect_py, m)
     py::arg("inspection_space_6d_min") = std::array<double, 6>(),
     py::arg("inspection_space_6d_max") = std::array<double, 6>()
   )
-  .def(py::init<std::string>(), py::arg("load_path") = "")
+  .def(py::init<std::string>(), py::arg("save_path") = "")
   .def("add_sparse_measurement", &Inspection::addSparseMeasurement)
   .def("get_closest_sparse_measurement", &Inspection::getClosestSparseMeasurement)
   .def("get_integrated_images_count", &Inspection::getIntegratedImagesCount)
