@@ -35,10 +35,6 @@ struct ValueInfo {
   std::string name;
   std::string unit;
 
-  ValueInfo() = default;
-  ValueInfo(const std::string& name, const std::string& unit)
-      : name(name), unit(unit) {}
-
   bool operator==(const ValueInfo& other) const {
     return (this->name == other.name and
             this->unit == other.unit);
