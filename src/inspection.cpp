@@ -402,7 +402,7 @@ void Inspection::addSparseMeasurementImpl(
     // Estimate min and max value for each data type reported by the sparse sensor
     for (uint64_t i = 0; i < sparse_value_infos_.size(); i++) {
       sparse_min_values_[i] = std::min(sparse_min_values_[i], values[i]);
-      sparse_max_values_[i] = std::max(sparse_min_values_[i], values[i]);
+      sparse_max_values_[i] = std::max(sparse_max_values_[i], values[i]);
     }
     
     sparse_orientation_.push_back(orientation);
