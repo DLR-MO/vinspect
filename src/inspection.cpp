@@ -74,6 +74,7 @@ Inspection::Inspection(const std::string & file_path) {
         sample["orientation"],
         sample["value"],
         user_color,
+        true,
         false
       );
     }
