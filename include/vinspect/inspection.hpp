@@ -73,18 +73,17 @@ class Inspection
 public:
   /**
    * Constructor for the Inspection class. 
+   * @param sparse_value_infos The sparse values / data types used for the inspection.
    * @param dense_sensors The dense sensors used for the inspection.
-   * @param sparse_sensors The sparse sensors used for the inspection.
    * @param mesh The reference mesh of the part that should be inspected.
-   * @param save_path The path where the inspection data should be saved. If
-   *None is given, the inspection data will not be saved.
+   * @param save_path The path where the inspection data should be saved.
    * @param inspection_space_3d_min Defines the space in which measurements are recorded
    * @param inspection_space_3d_max Defines the space in which measurements are recorded
    * @param inspection_space_6d_min Defines the space in which pose measurements are recorded
    * @param inspection_space_6d_max Defines the space in which pose measurements are recorded
    **/
   Inspection(
-    std::vector<SparseSensor> sparse_sensors,
+    std::vector<SparseValueInfo> sparse_value_infos,
     std::vector<DenseSensor> dense_sensors,
     open3d::geometry::TriangleMesh mesh,
     std::string save_path, 
@@ -95,7 +94,7 @@ public:
   );
 
   Inspection(
-    std::vector<SparseSensor> sparse_sensors,
+    std::vector<SparseValueInfo> sparse_value_infos,
     std::vector<DenseSensor> dense_sensors,
     std::string mesh_file_path, 
     std::string save_path,
@@ -122,21 +121,6 @@ public:
    * @return open3d mesh
    */
   open3d::geometry::TriangleMesh getMesh() const;
-
-  /**
-   * Returns the sparse sensor object given an id
-   * @param sensor_id sensor id
-   * @return sensor object
-   */
-  SparseSensor getSparseSensor(int sensor_id) const {
-    for (const auto& sensor : sparse_sensors_) {
-      if (sensor.getId() == sensor_id)
-      {
-        return sensor;
-      }
-    }
-    throw std::runtime_error(fmt::format("No sparse sensor with ID {}!", sensor_id));
-  }
 
   inline bool getDenseUsage() const { return dense_sensors_.size() > 0; }
 
@@ -271,7 +255,7 @@ public:
   {
     return sparse_orientation_;
   }
-  inline bool getSparseUsage() const { return sparse_sensors_.size() > 0; }
+  inline bool getSparseUsage() const { return sparse_value_infos_.size() > 0; }
   inline const std::vector<std::vector<double>> & getSparseValue() const {return sparse_value_;}
   inline const std::vector<Eigen::Vector3d> & getSparseUserColor() const
   {
@@ -300,8 +284,7 @@ public:
 
   std::vector<std::string> getSparseUnits() {
     std::vector<std::string> sparse_units;
-    // todo adapt if we allow for multiple sensors with different values/units
-    for (const auto & value_info : sparse_sensors_[0].getValueInfos()) {
+    for (const auto & value_info : sparse_value_infos_) {
       sparse_units.push_back(value_info.unit);
     }
     return sparse_units;
@@ -350,14 +333,13 @@ private:
     const Eigen::Matrix4d & extrinsic_optical, const Eigen::Matrix4d & extrinsic_world, bool store_in_database = true);
 
 
-  std::vector<SparseSensor> sparse_sensors_;
+  std::vector<SparseValueInfo> sparse_value_infos_;
   std::vector<DenseSensor> dense_sensors_;
   uint64_t sparse_data_count_ = 0, dense_data_count_ = 0;
   open3d::geometry::TriangleMesh reference_mesh_;
   OrthoTree::OctreePointC sparse_octree_;
   OrthoTree::TreePointPoseND<6, {0, 0, 0, 1, 1, 1}, std::ratio<1, 2>, double> dense_posetree_;
   std::vector<double> sparse_timestamp_, dense_timestamp_;
-  std::vector<int> sparse_sensor_id_, dense_sensor_id_;
   std::vector<std::array<double, 3>> sparse_position_;
   std::vector<std::array<double, 6>> dense_pose_;
   std::vector<std::array<double, 4>> sparse_orientation_, dense_orientation_;

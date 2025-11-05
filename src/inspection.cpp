@@ -39,7 +39,7 @@ Inspection::Inspection(const std::string & file_path) {
   };
 
   // Deserialize sensors
-  sparse_sensors_ = static_metadata["Sensors"]["Sparse"];
+  sparse_value_infos_ = static_metadata["Sensors"]["Sparse"]["Value infos"];
   dense_sensors_ = static_metadata["Sensors"]["Dense"];
   
   // Make common initializations for both dense and sparse sensors
@@ -127,7 +127,7 @@ Inspection::Inspection(const std::string & file_path) {
 
 // This constructor creates a new vinspect project with a new file
 Inspection::Inspection(
-  std::vector<SparseSensor> sparse_sensors,
+  std::vector<SparseValueInfo> sparse_value_infos,
   std::vector<DenseSensor> dense_sensors,
   open3d::geometry::TriangleMesh reference_mesh,
   std::string save_path, 
@@ -136,7 +136,7 @@ Inspection::Inspection(
   std::array<double, 6> inspection_space_6d_min, 
   std::array<double, 6> inspection_space_6d_max) 
   : 
-  sparse_sensors_{sparse_sensors}, 
+  sparse_value_infos_{sparse_value_infos}, 
   dense_sensors_{dense_sensors},
   reference_mesh_{reference_mesh},
   inspection_space_3d_{.Min = inspection_space_3d_min, .Max = inspection_space_3d_max},
@@ -162,7 +162,7 @@ Inspection::Inspection(
 }
   
 Inspection::Inspection(
-  std::vector<SparseSensor> sparse_sensors,
+  std::vector<SparseValueInfo> sparse_value_infos,
   std::vector<DenseSensor> dense_sensors,
   std::string mesh_file_path, 
   std::string save_path,
@@ -170,7 +170,7 @@ Inspection::Inspection(
   std::array<double, 3> inspection_space_3d_max,
   std::array<double, 6> inspection_space_6d_min, 
   std::array<double, 6> inspection_space_6d_max)
-: Inspection(sparse_sensors, dense_sensors, meshFromPath(mesh_file_path), save_path, inspection_space_3d_min,
+: Inspection(sparse_value_infos, dense_sensors, meshFromPath(mesh_file_path), save_path, inspection_space_3d_min,
     inspection_space_3d_max, inspection_space_6d_min, inspection_space_6d_max)
 { }
 
@@ -189,23 +189,11 @@ void Inspection::initDB(const std::string &file_path)
 void Inspection::setupSensors()
 {
   if (getSparseUsage()) {
-    // Check that each sparse sensor has the same ValueInfos
-    // todo this check can be omitted if more complex multi sensor aggregation is added
-    std::optional<std::vector<ValueInfo>> common_value_info;
-    for (const auto & sensor : sparse_sensors_) {
-      if (common_value_info) {
-        if (sensor.getValueInfos() != *common_value_info) {
-          throw std::runtime_error("Sparse sensors have different ValueInfos. This is not supported at the moment!");
-        }
-      }
-      common_value_info = sensor.getValueInfos();
-    }
-
     // Find the min/max values for each sparse value type
     sparse_min_values_ =
-      std::vector<double>(common_value_info.value().size(), std::numeric_limits<double>::max());
+      std::vector<double>(sparse_value_infos_.size(), std::numeric_limits<double>::max());
     sparse_max_values_ =
-      std::vector<double>(common_value_info.value().size(), std::numeric_limits<double>::lowest());
+      std::vector<double>(sparse_value_infos_.size(), std::numeric_limits<double>::lowest());
   }
 
   if (getDenseUsage()) {
@@ -273,22 +261,19 @@ std::vector<double> Inspection::getSparseValuesForIds(
   const std::string & value_name, 
   const std::vector<uint64_t> & ids) const
 {
-  // todo change this if we support multiple different sensor configurations
-  auto sensor_value_infos = sparse_sensors_[0].getValueInfos();
-
   // Find the value info that matches the name
   auto it = std::find_if(
-    sensor_value_infos.begin(), 
-    sensor_value_infos.begin(), 
+    sparse_value_infos_.begin(), 
+    sparse_value_infos_.begin(), 
     [&value_name](const auto & info){
       return info.name == value_name;
     });
   
-  if (it == sensor_value_infos.end()) {
+  if (it == sparse_value_infos_.end()) {
     throw std::runtime_error(fmt::format("Value info with name {} not found in sensor value infos", value_name));
   }
 
-  std::size_t value_index = std::distance(sensor_value_infos.begin(), it);
+  std::size_t value_index = std::distance(sparse_value_infos_.begin(), it);
 
   std::vector<double> values(ids.size());
   for (uint64_t i = 0; i < ids.size(); i++) {
@@ -415,7 +400,7 @@ void Inspection::addSparseMeasurementImpl(
     std::lock_guard<std::mutex> lock(mtx_);
     
     // Estimate min and max value for each data type reported by the sparse sensor
-    for (uint64_t i = 0; i < getSparseSensor(sensor_id).numValues(); i++) {
+    for (uint64_t i = 0; i < sparse_value_infos_.size(); i++) {
       sparse_min_values_[i] = std::min(sparse_min_values_[i], values[i]);
       sparse_max_values_[i] = std::max(sparse_min_values_[i], values[i]);
     }
@@ -424,7 +409,6 @@ void Inspection::addSparseMeasurementImpl(
     sparse_value_.push_back(values);
     sparse_user_color_.push_back(user_color);
     sparse_timestamp_.push_back(timestamp);
-    sparse_sensor_id_.push_back(sensor_id);
     sparse_position_.push_back(position);
     
     // Adding all values to leafs of the octree. Was faster in experiments
@@ -542,20 +526,18 @@ void Inspection::clear()
   dense_data_count_ = 0;
   sparse_octree_.Clear();
   sparse_timestamp_.clear();
-  sparse_sensor_id_.clear();
   sparse_position_.clear();
   sparse_orientation_.clear();
   sparse_value_.clear();
   sparse_user_color_.clear();
   if (getSparseUsage())
   {
-    auto num_sparse_types = sparse_sensors_[0].numValues();
+    auto num_sparse_types = sparse_value_infos_.size();
     sparse_min_values_ = std::vector<double>(num_sparse_types, std::numeric_limits<double>::max());
     sparse_max_values_ = std::vector<double>(num_sparse_types, std::numeric_limits<double>::lowest());
   }
 
   dense_timestamp_.clear();
-  dense_sensor_id_.clear();
   dense_pose_.clear();
   dense_orientation_.clear();
 
@@ -582,7 +564,9 @@ bool Inspection::saveMetaData()
       { "max", inspection_space_6d_.Max}
     }},
     {"Sensors", {
-       {"Sparse", sparse_sensors_},
+       {"Sparse", {
+          {"Value infos", sparse_value_infos_}
+       }},
        {"Dense", dense_sensors_}
       }
     }

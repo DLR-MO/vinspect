@@ -102,7 +102,7 @@ PYBIND11_MODULE(vinspect_py, m)
   py::class_<Inspection, std::unique_ptr<Inspection>>(m, "Inspection")
   .def(
     py::init<
-      std::vector<SparseSensor>, 
+      std::vector<SparseValueInfo>, 
       std::vector<DenseSensor>,
       std::string, 
       std::string,
@@ -110,7 +110,7 @@ PYBIND11_MODULE(vinspect_py, m)
       std::array<double, 3>, 
       std::array<double, 6>, 
       std::array<double, 6>>(),
-    py::arg("sparse_sensors"), 
+    py::arg("sparse_value_infos"),
     py::arg("dense_sensors"), 
     py::arg("reference_mesh_file_path") = "",
     py::arg("save_path") = "",
@@ -137,21 +137,13 @@ PYBIND11_MODULE(vinspect_py, m)
   .def("set_intrinsic", &Inspection::setIntrinsic)
   .def("set_intrinsic2", &Inspection::setIntrinsic2);
 
-  py::class_<ValueInfo, std::unique_ptr<ValueInfo>>(m, "ValueInfo")
+  py::class_<SparseValueInfo, std::unique_ptr<SparseValueInfo>>(m, "ValueInfo")
   .def(
     py::init<std::string, std::string>(),
     py::arg("name"), py::arg("unit")
   )
-  .def_readwrite("name", &ValueInfo::name)
-  .def_readwrite("unit", &ValueInfo::unit);
-
-  py::class_<SparseSensor, std::unique_ptr<SparseSensor>>(m, "SparseSensor")
-  .def(
-    py::init<int, std::vector<ValueInfo>>(),
-    py::arg("id"), py::arg("value_infos")
-  )
-  .def("get_value_infos", &SparseSensor::getValueInfos)
-  .def("get_num_values", &SparseSensor::numValues);
+  .def_readwrite("name", &SparseValueInfo::name)
+  .def_readwrite("unit", &SparseValueInfo::unit);
 
   py::class_<DenseSensor, std::unique_ptr<DenseSensor>>(m, "DenseSensor")
   .def(
