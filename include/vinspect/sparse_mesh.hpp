@@ -46,7 +46,7 @@ private:
   double meshed_min_value_;
   double meshed_max_value_;
   std::vector<uint64_t> appended_ids_;
-  std::vector<uint64_t> point_values_;
+  std::vector<double> point_values_;
   // Key: The placement order of the appended points: First gets 0, second gets 1 etc.
   // Value: ID of the point
   std::map<uint64_t, uint64_t> id_to_appended_index_;
