@@ -33,18 +33,21 @@ class DenseSensor
 {
 public:
   explicit DenseSensor() = default;  // We need this for the auto serialization, do not use otherwise
-  explicit DenseSensor(int id, unsigned int width, unsigned int height) : id_{id}, resolution_(width, height) {};
+  explicit DenseSensor(int id, unsigned int width, unsigned int height, double depth_scale) 
+   : id_{id}, resolution_(width, height), depth_scale_(depth_scale) {};
   std::size_t numPixels() const { return resolution_.first * resolution_.second; }
   std::pair<unsigned int, unsigned int> getResolution() const {return resolution_;}
   unsigned int getWidth() const { return resolution_.first; }
   unsigned int getHeight() const { return resolution_.second; }
+  double getDepthScale() const { return depth_scale_; }
   int getId() const { return id_; }
 
 private:
   int id_ = 0;
-  std::pair<unsigned int, unsigned int> resolution_;
+  std::pair<unsigned int, unsigned int> resolution_{0, 0};
+  double depth_scale_ = 1.0;
 
-NLOHMANN_DEFINE_TYPE_INTRUSIVE(DenseSensor, id_, resolution_)
+NLOHMANN_DEFINE_TYPE_INTRUSIVE(DenseSensor, id_, resolution_, depth_scale_);
 };
 
 

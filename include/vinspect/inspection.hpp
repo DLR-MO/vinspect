@@ -33,6 +33,8 @@
 #include "open3d/geometry/TriangleMesh.h"
 #include "open3d/io/ModelIO.h"
 
+#include <opencv2/opencv.hpp>
+
 #include "vinspect/sensors.hpp"
 #include "vinspect/pose_tree/octree.h"
 #include "vinspect/pose_tree/octree_container.h"
@@ -193,9 +195,9 @@ public:
   /**
    * Returns a image retrieved from the database based on the given id.
    * @param sample_id id of the sample
-   * @return image as a std::vector<std::vector<uint8_t>>
+   * @return the queried image
    */
-  std::vector<std::vector<std::array<u_int8_t, 3>>> getImageFromId(const int sample_id) const;
+  cv::Mat getImageFromId(const int sample_id) const;
 
   /**
    * Returns the pose which is retrieved from the database based on the given id.
@@ -235,15 +237,19 @@ public:
   void clear();
 
   void addImage(
-    const open3d::geometry::RGBDImage & image, const int sensor_id,
-    const Eigen::Matrix4d & extrinsic_optical, const Eigen::Matrix4d & extrinsic_world)
+    const cv::Mat & color_image,
+    const cv::Mat & depth_image,
+    double depth_trunc, 
+    const int sensor_id,
+    const Eigen::Matrix4d & extrinsic_optical, 
+    const Eigen::Matrix4d & extrinsic_world)
   {
-    addImageImpl(image, sensor_id, extrinsic_optical, extrinsic_world, true);
+    addImageImpl(color_image, depth_image, depth_trunc, sensor_id, extrinsic_optical, extrinsic_world, true);
   }
 
-  std::shared_ptr<open3d::geometry::TriangleMesh> extractDenseReconstruction() const;
+  std::shared_ptr<open3d::geometry::TriangleMesh> extractDenseReconstruction();
   
-  void saveDenseReconstruction(std::string filename) const;
+  void saveDenseReconstruction(std::string filename);
 
   inline uint64_t getSparseDataCount() const {return sparse_data_count_;}
   inline const std::vector<std::array<double, 3>> & getSparsePosition() const
@@ -328,9 +334,13 @@ private:
     const Eigen::Vector3d & user_color = {0.0, 0.0, 0.0}, bool insert_in_octree = true, bool store_in_database = true);
 
   void addImageImpl(
-    const open3d::geometry::RGBDImage & image, const int sensor_id,
-    const Eigen::Matrix4d & extrinsic_optical, const Eigen::Matrix4d & extrinsic_world, bool store_in_database = true);
-
+    const cv::Mat & color_image,
+    const cv::Mat & depth_image,
+    double depth_trunc, 
+    const int sensor_id,
+    const Eigen::Matrix4d & extrinsic_optical, 
+    const Eigen::Matrix4d & extrinsic_world, 
+    bool store_in_database = true);
 
   std::vector<SparseValueInfo> sparse_value_infos_;
   std::vector<DenseSensor> dense_sensors_;

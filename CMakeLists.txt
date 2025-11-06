@@ -72,7 +72,7 @@ set(SOURCES src/inspection.cpp src/utils.cpp src/sparse_mesh.cpp ${PROTO_SRCS} $
 
 add_library(${PROJECT_NAME} SHARED ${SOURCES})
 
-target_link_libraries(${PROJECT_NAME} TBB::tbb OpenMP::OpenMP_CXX rocksdb fmt::fmt ${PROTOBUF_LIBRARY} ${fmt_LIBRARIES})
+target_link_libraries(${PROJECT_NAME} TBB::tbb OpenMP::OpenMP_CXX rocksdb fmt::fmt ${PROTOBUF_LIBRARY} ${OpenCV_LIBS} ${fmt_LIBRARIES})
 
 ament_target_dependencies(${PROJECT_NAME}
   ament_cmake

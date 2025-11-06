@@ -7,7 +7,7 @@ namespace vinspect
 {
 
 // This constructor loads an already existing vinspect project file
-Inspection::Inspection(const std::string & file_path) : device_{selectDevice()} {
+Inspection::Inspection(const std::string & file_path) : o3d_device_{selectDevice()} {
   if (!std::filesystem::exists(file_path)) {
     throw std::runtime_error("File does not exist: " + file_path);
   }
@@ -97,19 +97,25 @@ Inspection::Inspection(const std::string & file_path) : device_{selectDevice()} 
       // Get sensor information
       auto sensor = getDenseSensor(retrievedEntry.sensor_id());
 
-      // Convert image to open3d
-      open3d::geometry::Image o3d_color_img, o3d_depth_img;
-      o3d_depth_img.Prepare(sensor.getWidth(), sensor.getHeight(), 1, 2);
-      o3d_color_img.Prepare(sensor.getWidth(), sensor.getHeight(), 3, 1);
-      memcpy(o3d_depth_img.data_.data(), retrievedEntry.depth_image().data(), o3d_depth_img.data_.size());
-      memcpy(o3d_color_img.data_.data(), retrievedEntry.color_image().data(), o3d_color_img.data_.size());
-
-      std::shared_ptr<open3d::geometry::RGBDImage> rgbd =
-        open3d::geometry::RGBDImage::CreateFromColorAndDepth(
-        o3d_color_img, o3d_depth_img, 1.0f, 99999999.0f, false);
+      // Zero-copy the data to OpenCV Mat objects
+      // We need to make sure that the original object outlives these
+      // references, which is the case here, but be careful when you
+      // modify something in addImageImpl or here
+      const cv::Mat color_img(
+        sensor.getHeight(), 
+        sensor.getWidth(), 
+        CV_8UC3, 
+        static_cast<void *>(retrievedEntry.mutable_color_image()->data()));
+      const cv::Mat depth_img(
+        sensor.getHeight(), 
+        sensor.getWidth(), 
+        retrievedEntry.depth_dtype(), 
+        static_cast<void *>(retrievedEntry.mutable_depth_image()->data()));
 
       addImageImpl(
-        *rgbd, 
+        color_img,
+        depth_img,
+        retrievedEntry.depth_trunc(),
         retrievedEntry.sensor_id(), 
         matrixFromFlatProtoArray(retrievedEntry.extrinsic_optical_matrix()), 
         matrixFromFlatProtoArray(retrievedEntry.extrinsic_optical_matrix()),
@@ -117,9 +123,7 @@ Inspection::Inspection(const std::string & file_path) : device_{selectDevice()} 
       );
     }
   }
-  
   std::cout << "Data loaded." << std::endl;
-  
 }
 
 // todo maybe rename sparse->point and dense->area?
@@ -142,7 +146,7 @@ Inspection::Inspection(
   reference_mesh_{reference_mesh},
   inspection_space_3d_{.Min = inspection_space_3d_min, .Max = inspection_space_3d_max},
   inspection_space_6d_{.Min = inspection_space_6d_min, .Max = inspection_space_6d_max},
-  device_{selectDevice()}
+  o3d_device_{selectDevice()}
 {
   // Create new database
   initDB(save_path);
@@ -318,36 +322,29 @@ std::vector<std::array<double, 6>> Inspection::getMultiDensePoses(const int perc
   return all_poses;
 }
 
-std::vector<std::vector<std::array<u_int8_t, 3>>> Inspection::getImageFromId(const int sample_id) const
+cv::Mat Inspection::getImageFromId(const int sample_id) const
 {
+  // Retrieve sample from DB
   std::string retrieveKey = DB_KEY_DENSE_DATA_PREFIX + fmt::format("{:0>{}}", sample_id, DB_NUMBER_DIGITS_FOR_IDX);
   std::string retrievedStringData;
-  std::vector<std::vector<std::array<u_int8_t, 3>>> image;
-  db_->Get(rocksdb::ReadOptions(), retrieveKey, &retrievedStringData);
-  Dense retrievedEntry;
-  if (retrievedEntry.ParseFromString(retrievedStringData)) {
-    // Get sensor infos
-    auto sensor = getDenseSensor(retrievedEntry.sensor_id());
-
-    // Allocate memory
-    image.resize(
-      sensor.getHeight(),
-      std::vector<std::array<uint8_t, 3>>(sensor.getWidth()));
-
-    // Copy data
-    int index = 0;
-    for (std::size_t row = 0; row < sensor.getHeight(); row++) {
-      for (std::size_t col = 0; col < sensor.getWidth(); col++) {
-        image[row][col] =
-        {
-          static_cast<u_int8_t>(retrievedEntry.color_image(index)), 
-          static_cast<u_int8_t>(retrievedEntry.color_image(index + 1)),
-          static_cast<u_int8_t>(retrievedEntry.color_image(index + 2))
-        };
-        index += 3;
-      }
-    }
+  if (!db_->Get(rocksdb::ReadOptions(), retrieveKey, &retrievedStringData).ok()) {
+    throw std::runtime_error("Error retrieving dense sample from db");
   }
+
+  // Deserialize sample
+  Dense retrievedEntry;
+  if (!retrievedEntry.ParseFromString(retrievedStringData)) {
+    throw std::runtime_error("Error parsing dense sample");
+  }
+  
+  // Get sensor infos
+  auto sensor = getDenseSensor(retrievedEntry.sensor_id());
+  
+  // Copy image into the correct format
+  // We need to do a copy here because the original memory will be
+  // freed by RAII at the end of this function
+  cv::Mat image(sensor.getHeight(), sensor.getWidth(), CV_8UC3);
+  memcpy(image.data, retrievedEntry.color_image().data(), retrievedEntry.color_image().size());
   return image;
 }
 
@@ -448,8 +445,13 @@ void Inspection::addSparseMeasurementImpl(
 }
 
 void Inspection::addImageImpl(
-  const open3d::geometry::RGBDImage & image, const int sensor_id,
-  const Eigen::Matrix4d & extrinsic_optical, const Eigen::Matrix4d & extrinsic_world, bool store_in_database)
+  const cv::Mat & color_image,
+  const cv::Mat & depth_image,
+  double depth_trunc,
+  const int sensor_id,
+  const Eigen::Matrix4d & extrinsic_optical, 
+  const Eigen::Matrix4d & extrinsic_world, 
+  bool store_in_database)
 {
   // we can only integrate if we already received the intrinsic calibration for this sensor
   auto intrinsics = intrinsic_.find(sensor_id);
@@ -458,16 +460,40 @@ void Inspection::addImageImpl(
               << " Will not integrate." << std::endl;
     return;
   }
-  
-  // Todo avoid copy
-  open3d::t::geometry::Image color_img_tens =
-    open3d::t::geometry::Image::FromLegacy(image.color_, o3d_device_);
-  const open3d::t::geometry::Image depth_img_tens =
-    open3d::t::geometry::Image::FromLegacy(image.depth, o3d_device_);
 
-  if (depth_img_tens.GetDtype() == open3d::core::Dtype::Float32){
-    // TSDF with voxel block grid currently only supports to have color images as floats when depth is float
-    color_img_tens = color_img_tens.To(open3d::core::Dtype::Float32);
+  // Get sensor
+  auto sensor = getDenseSensor(sensor_id);
+  assert(color_image.rows == sensor.getHeight());
+  assert(color_image.cols == sensor.getWidth());
+  double depth_scale = sensor.getDepthScale();
+
+  // Convert image to open3d representation
+  assert(color_image.type() == CV_8UC3);
+  auto o3d_color_img = open3d::core::Tensor(
+			static_cast<const uint8_t*>(color_image.data),
+			{color_image.rows, color_image.cols, color_image.channels()},
+			open3d::core::UInt8,
+      o3d_device_);
+  
+  // Convert depth to open3d representation
+  open3d::core::Tensor o3d_depth_image;
+  if(depth_image.type() == CV_32FC1){
+    o3d_depth_image = open3d::core::Tensor(
+      depth_image.data,
+      {depth_image.rows, depth_image.cols, depth_image.channels()},
+      open3d::core::Float32,
+      o3d_device_);
+    // TSDF with voxel block grid currently only supports to 
+    // have color images as floats when depth is float
+    o3d_color_img = o3d_color_img.To(open3d::core::Dtype::Float32);
+  } else if(depth_image.type() == CV_16FC1) {
+    o3d_depth_image = open3d::core::Tensor(
+      depth_image.data,
+      {depth_image.rows, depth_image.cols, depth_image.channels()},
+      open3d::core::UInt16,
+      o3d_device_);
+  } else {
+      throw std::runtime_error("Unsupported depth encoding");
   }
 
   auto focal_length = intrinsic_[sensor_id].GetFocalLength();
@@ -484,8 +510,7 @@ void Inspection::addImageImpl(
   open3d::core::Tensor frustum_block_coords;
   try {
     //todo it might make sense to restrict these blocks to the cropped area (would reduce RAM usage)
-    //todo depth_scale and depth_trunc should either be parameters or handled beforehands
-    frustum_block_coords = voxel_grid_.GetUniqueBlockCoordinates(depth_img_tens, intrinsic_tens,
+    frustum_block_coords = voxel_grid_.GetUniqueBlockCoordinates(o3d_depth_image, intrinsic_tens,
       extrinsic_tens, depth_scale, depth_trunc);
   } catch (const std::runtime_error & e) {
     std::cerr << "no block is touched in tsdf volume, abort integration of this image. "
@@ -494,9 +519,9 @@ void Inspection::addImageImpl(
     return;
   }
 
-  //todo should use other integrate method which uses different intrinsics for depth and color images
-  voxel_grid_.Integrate(frustum_block_coords, depth_img_tens, color_img_tens, intrinsic_tens,
-      extrinsic_tens);
+  // todo should use other integrate method which uses different intrinsics for depth and color images
+  voxel_grid_.Integrate(frustum_block_coords, o3d_depth_image, o3d_color_img, intrinsic_tens,
+      extrinsic_tens, depth_scale, depth_trunc);
 
   std::array<double, 6> image_pose = transformMatrixToPose(extrinsic_world);
 
@@ -508,7 +533,14 @@ void Inspection::addImageImpl(
     // save dense data to database
     if (store_in_database) {
       std::string key = DB_KEY_DENSE_DATA_PREFIX + fmt::format("{:0>{}}", sparse_data_count_, DB_NUMBER_DIGITS_FOR_IDX);
-      std::string value = serializedStructForDenseEntry(dense_data_count_, sensor_id, image.color_.data_, image.depth_.data_, extrinsic_optical, extrinsic_world);
+      std::string value = serializedStructForDenseEntry(
+        dense_data_count_,
+        sensor_id,
+        color_image,
+        depth_image,
+        depth_trunc,
+        extrinsic_optical,
+        extrinsic_world);
       db_->Put(rocksdb::WriteOptions(), key, value);
     }
 
@@ -519,7 +551,7 @@ void Inspection::addImageImpl(
 std::shared_ptr<open3d::geometry::TriangleMesh> Inspection::extractDenseReconstruction()
 {
   // todo beware of copying the returned mesh
-  //TDODO it should propably be also a parameter how often we want to see one point
+  // TODO it should probably be also a parameter how often we want to see one point
   open3d::geometry::TriangleMesh mesh_d = voxel_grid_.ExtractTriangleMesh(0.0f).ToLegacy();
   std::shared_ptr<open3d::geometry::TriangleMesh> mesh = std::make_shared<open3d::geometry::TriangleMesh>(mesh_d);
 
@@ -530,7 +562,7 @@ std::shared_ptr<open3d::geometry::TriangleMesh> Inspection::extractDenseReconstr
   return cropped_mesh;
 }
 
-void Inspection::saveDenseReconstruction(std::string filename) const
+void Inspection::saveDenseReconstruction(std::string filename)
 {
   auto mesh = extractDenseReconstruction();
   open3d::io::WriteTriangleMesh(filename, *mesh, true);

@@ -18,6 +18,9 @@
 #include "open3d/Open3D.h"
 #include "open3d/geometry/TriangleMesh.h"
 #include "open3d/io/TriangleMeshIO.h"
+
+#include <opencv2/opencv.hpp>
+
 #include "vinspect/pose_tree/octree.h"
 #include "dense.pb.h"
 
@@ -64,8 +67,9 @@ std::vector<std::string> splitStringArray(
   std::string serializedStructForDenseEntry(
     int i,
     int sensor_id,
-    const std::vector<u_int8_t> & color_img,
-    const std::vector<u_int8_t> & depth_img,
+    const cv::Mat & color_img,
+    const cv::Mat & depth_img,
+    double depth_trunc,
     const Eigen::Matrix4d & extrinsic_optical, 
     const Eigen::Matrix4d & extrinsic_world
   );
@@ -89,15 +93,7 @@ std::vector<std::string> splitStringArray(
     return arr;
   }
 
-  open3d::core::Device selectDevice()
-  {
-    std::vector<open3d::core::Device> cuda_devices = open3d::core::Device::GetAvailableCUDADevices();
-    if (cuda_devices.size() > 0) {
-      return cuda_devices[0];
-    } else {
-      return open3d::core::Device("CPU:0");
-    }
-  }
+  open3d::core::Device selectDevice();
 
 }  // namespace vinspect
 #endif  // VINSPECT__UTILS_H_

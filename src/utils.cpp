@@ -160,8 +160,9 @@ std::array<double, 7> eulerToQuatPose(const std::array<double, 6> euler_pose)
 std::string serializedStructForDenseEntry(
   int i,
   int sensor_id,
-  const std::vector<u_int8_t> & color_img,
-  const std::vector<u_int8_t> & depth_img,
+  const cv::Mat & color_img,
+  const cv::Mat & depth_img,
+  double depth_trunc,
   const Eigen::Matrix4d & extrinsic_optical, 
   const Eigen::Matrix4d & extrinsic_world
 )
@@ -171,6 +172,8 @@ std::string serializedStructForDenseEntry(
   Dense denseEntry;
   denseEntry.set_entry_nr(i);
   denseEntry.set_sensor_id(sensor_id);
+  denseEntry.set_depth_trunc(depth_trunc);
+  denseEntry.set_depth_dtype(depth_img.type());
 
   auto * extrinsic_optical_matrix_field = denseEntry.mutable_extrinsic_optical_matrix();
   extrinsic_optical_matrix_field->Add(extrinsic_optical.reshaped().begin(), extrinsic_optical.reshaped().end());
@@ -178,11 +181,8 @@ std::string serializedStructForDenseEntry(
   auto * extrinsic_world_field = denseEntry.mutable_extrinsic_world_matrix();
   extrinsic_world_field->Add(extrinsic_world.reshaped().begin(), extrinsic_world.reshaped().end());
 
-  auto * color_image_field = denseEntry.mutable_color_image();
-  color_image_field->Add(color_img.begin(), color_img.end());
-
-  auto * depth_image_field = denseEntry.mutable_depth_image();
-  depth_image_field->Add(depth_img.begin(), depth_img.end());
+  denseEntry.set_color_image(color_img.data, color_img.cols * color_img.rows * color_img.elemSize());
+  denseEntry.set_depth_image(depth_img.data, depth_img.cols * depth_img.rows * depth_img.elemSize());
 
   return denseEntry.SerializeAsString();
 }
@@ -198,6 +198,16 @@ Eigen::Matrix4d matrixFromFlatProtoArray(const google::protobuf::RepeatedField<d
       matrix(row, col) = flat_array[i];
   }
   return matrix;
+}
+
+open3d::core::Device selectDevice()
+{
+  std::vector<open3d::core::Device> cuda_devices = open3d::core::Device::GetAvailableCUDADevices();
+  if (cuda_devices.size() > 0) {
+    return cuda_devices[0];
+  } else {
+    return open3d::core::Device("CPU:0");
+  }
 }
 
 }  // namespace vinspect
