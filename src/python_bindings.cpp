@@ -56,28 +56,20 @@ cv::Mat imagePyToCpp(const py::array_t<T> & image)
   return cv_image;
 }
 
-void addImage_16(
-  Inspection * inspection, const py::array_t<uint8_t> & color_image, 
-  const py::array_t<uint16_t> & depth_image,
-  float depth_trunc, const int sensor_id, const Eigen::Matrix4d & extrinsic_optical,
+template<int CVDepthType, typename TDepth>
+void addImage(
+  Inspection * inspection, 
+  const py::array_t<uint8_t> & color_image, 
+  const py::array_t<TDepth> & depth_image,
+  float depth_trunc, 
+  const int sensor_id, 
+  const Eigen::Matrix4d & extrinsic_optical,
   const Eigen::Matrix4d & extrinsic_world)
 {
   auto color_img = imagePyToCpp<CV_8UC3, uint8_t>(color_image);
-  auto depth_img = imagePyToCpp<CV_16UC1, uint16_t>(depth_image);
+  auto depth_img = imagePyToCpp<CVDepthType, TDepth>(depth_image);
   inspection->addImage(color_img, depth_img, depth_trunc, sensor_id, extrinsic_optical, extrinsic_world);
 }
-
-void addImage_float(
-  Inspection * inspection, const py::array_t<uint8_t> & color_image,
-  const py::array_t<float> & depth_image,
-  float depth_trunc, const int sensor_id, const Eigen::Matrix4d & extrinsic_optical,
-  const Eigen::Matrix4d & extrinsic_world)
-{
-  auto color_img = imagePyToCpp<CV_8UC3, uint8_t>(color_image);
-  auto depth_img = imagePyToCpp<CV_32FC1, float>(depth_image);
-  inspection->addImage(color_img, depth_img, depth_trunc, sensor_id, extrinsic_optical, extrinsic_world);
-}
-
 
 PYBIND11_MODULE(vinspect_py, m)
 {
@@ -141,8 +133,8 @@ PYBIND11_MODULE(vinspect_py, m)
 
   m.def("show_colored_mesh", &showColoredMesh);
   m.def("compute_colored_mesh", &computeColoredMesh);
-  m.def("add_image_py", &addImage_float);
-  m.def("add_image_py", &addImage_16);
+  m.def("add_image_py", &addImage<CV_16UC1, uint16_t>);
+  m.def("add_image_py", &addImage<CV_32FC1, float>);
 }
 }  // namespace vinspect
 #endif
