@@ -12,7 +12,7 @@ open3d::geometry::TriangleMesh meshFromPath(const std::string & mesh_file_path)
   open3d::geometry::TriangleMesh mesh;
   if (mesh_file_path.empty()) {
     return mesh;
-  }else if (!open3d::io::ReadTriangleMesh(mesh_file_path, mesh)) {
+  } else if (!open3d::io::ReadTriangleMesh(mesh_file_path, mesh)) {
     throw std::runtime_error("Cannot read mesh file: " + mesh_file_path);
   }
   return mesh;
@@ -163,7 +163,7 @@ std::string serializedStructForDenseEntry(
   const cv::Mat & color_img,
   const cv::Mat & depth_img,
   double depth_trunc,
-  const Eigen::Matrix4d & extrinsic_optical, 
+  const Eigen::Matrix4d & extrinsic_optical,
   const Eigen::Matrix4d & extrinsic_world
 )
 {
@@ -176,26 +176,30 @@ std::string serializedStructForDenseEntry(
   denseEntry.set_depth_dtype(depth_img.type());
 
   auto * extrinsic_optical_matrix_field = denseEntry.mutable_extrinsic_optical_matrix();
-  extrinsic_optical_matrix_field->Add(extrinsic_optical.reshaped().begin(), extrinsic_optical.reshaped().end());
+  extrinsic_optical_matrix_field->Add(extrinsic_optical.reshaped().begin(),
+      extrinsic_optical.reshaped().end());
 
   auto * extrinsic_world_field = denseEntry.mutable_extrinsic_world_matrix();
   extrinsic_world_field->Add(extrinsic_world.reshaped().begin(), extrinsic_world.reshaped().end());
 
-  denseEntry.set_color_image(color_img.data, color_img.cols * color_img.rows * color_img.elemSize());
-  denseEntry.set_depth_image(depth_img.data, depth_img.cols * depth_img.rows * depth_img.elemSize());
+  denseEntry.set_color_image(color_img.data,
+      color_img.cols * color_img.rows * color_img.elemSize());
+  denseEntry.set_depth_image(depth_img.data,
+      depth_img.cols * depth_img.rows * depth_img.elemSize());
 
   return denseEntry.SerializeAsString();
 }
 
-Eigen::Matrix4d matrixFromFlatProtoArray(const google::protobuf::RepeatedField<double>& flat_array){
+Eigen::Matrix4d matrixFromFlatProtoArray(const google::protobuf::RepeatedField<double> & flat_array)
+{
   if (flat_array.size() != 16) {
-        throw std::invalid_argument("Extrinsic optical matrix must have exactly 16 elements");
+    throw std::invalid_argument("Extrinsic optical matrix must have exactly 16 elements");
   }
   Eigen::Matrix4d matrix;
   for (int i = 0; i < 16; ++i) {
-      int row = i / 4;
-      int col = i % 4;
-      matrix(row, col) = flat_array[i];
+    int row = i / 4;
+    int col = i % 4;
+    matrix(row, col) = flat_array[i];
   }
   return matrix;
 }

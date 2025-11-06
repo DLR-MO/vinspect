@@ -7,7 +7,9 @@ namespace vinspect
 {
 
 // This constructor loads an already existing vinspect project file
-Inspection::Inspection(const std::string & file_path) : o3d_device_{selectDevice()} {
+Inspection::Inspection(const std::string & file_path)
+: o3d_device_{selectDevice()}
+{
   if (!std::filesystem::exists(file_path)) {
     throw std::runtime_error("File does not exist: " + file_path);
   }
@@ -15,55 +17,56 @@ Inspection::Inspection(const std::string & file_path) : o3d_device_{selectDevice
 
   // Initialize the database
   initDB(file_path);
-  
+
   // Load static metadata
   std::string serialized_meta_data;
   if(!db_->Get(rocksdb::ReadOptions(), DB_KEY_STATIC_METADATA, &serialized_meta_data).ok()) {
     throw std::runtime_error("Malformed project file");
   }
   json static_metadata = json::parse(serialized_meta_data);
-  
+
   std::cout << "--------- Metadata ----------" << std::endl;
 
   std::cout << serialized_meta_data << std::endl;
 
   std::cout << "-----------------------------" << std::endl;
-  
+
   inspection_space_3d_ = {
-    .Min = static_metadata["3D Inspection space"]["min"], 
+    .Min = static_metadata["3D Inspection space"]["min"],
     .Max = static_metadata["3D Inspection space"]["max"]
   };
   inspection_space_6d_ = {
-    .Min = static_metadata["6D Inspection space"]["min"], 
+    .Min = static_metadata["6D Inspection space"]["min"],
     .Max = static_metadata["6D Inspection space"]["max"]
   };
 
   // Deserialize sensors
   sparse_value_infos_ = static_metadata["Sensors"]["Sparse"]["Value infos"];
   dense_sensors_ = static_metadata["Sensors"]["Dense"];
-  
+
   // Make common initializations for both dense and sparse sensors
   setupSensors();
-  
+
   recreateOctrees();
-  
+
   loadMesh(DB_KEY_REFERENCE_MESH, reference_mesh_);
-  
+
   std::cout << "Processing measurements..." << std::endl;
-  
+
   // Iterate over sparse measurements
-  if (getSparseUsage())
-  {
+  if (getSparseUsage()) {
     // Create an iterator
     auto it = std::unique_ptr<rocksdb::Iterator>(db_->NewIterator(rocksdb::ReadOptions()));
-  
+
     // Iterate over keys with the specified prefix using a for loop
-    for (it->Seek(DB_KEY_SPARSE_DATA_PREFIX); it->Valid() && it->key().starts_with(DB_KEY_SPARSE_DATA_PREFIX); it->Next()) {
+    for (it->Seek(DB_KEY_SPARSE_DATA_PREFIX);
+      it->Valid() && it->key().starts_with(DB_KEY_SPARSE_DATA_PREFIX); it->Next())
+    {
       json sample = json::parse(it->value().ToStringView());
 
       Eigen::Vector3d user_color(
-        sample["user_color"]["r"], 
-        sample["user_color"]["g"], 
+        sample["user_color"]["r"],
+        sample["user_color"]["g"],
         sample["user_color"]["b"]
       );
 
@@ -80,13 +83,14 @@ Inspection::Inspection(const std::string & file_path) : o3d_device_{selectDevice
     }
   }
   // Iterate over dense measurements
-  if(getDenseUsage())
-  {
+  if(getDenseUsage()) {
     // Create an iterator
     auto it = std::unique_ptr<rocksdb::Iterator>(db_->NewIterator(rocksdb::ReadOptions()));
-  
+
     // Iterate over keys with the specified prefix using a for loop
-    for (it->Seek(DB_KEY_DENSE_DATA_PREFIX); it->Valid() && it->key().starts_with(DB_KEY_DENSE_DATA_PREFIX); it->Next()) {
+    for (it->Seek(DB_KEY_DENSE_DATA_PREFIX);
+      it->Valid() && it->key().starts_with(DB_KEY_DENSE_DATA_PREFIX); it->Next())
+    {
       auto sample = it->value().ToString();
 
       Dense retrievedEntry;
@@ -102,22 +106,22 @@ Inspection::Inspection(const std::string & file_path) : o3d_device_{selectDevice
       // references, which is the case here, but be careful when you
       // modify something in addImageImpl or here
       const cv::Mat color_img(
-        sensor.getHeight(), 
-        sensor.getWidth(), 
-        CV_8UC3, 
+        sensor.getHeight(),
+        sensor.getWidth(),
+        CV_8UC3,
         static_cast<void *>(retrievedEntry.mutable_color_image()->data()));
       const cv::Mat depth_img(
-        sensor.getHeight(), 
-        sensor.getWidth(), 
-        retrievedEntry.depth_dtype(), 
+        sensor.getHeight(),
+        sensor.getWidth(),
+        retrievedEntry.depth_dtype(),
         static_cast<void *>(retrievedEntry.mutable_depth_image()->data()));
 
       addImageImpl(
         color_img,
         depth_img,
         retrievedEntry.depth_trunc(),
-        retrievedEntry.sensor_id(), 
-        matrixFromFlatProtoArray(retrievedEntry.extrinsic_optical_matrix()), 
+        retrievedEntry.sensor_id(),
+        matrixFromFlatProtoArray(retrievedEntry.extrinsic_optical_matrix()),
         matrixFromFlatProtoArray(retrievedEntry.extrinsic_optical_matrix()),
         false
       );
@@ -135,13 +139,12 @@ Inspection::Inspection(
   std::vector<SparseValueInfo> sparse_value_infos,
   std::vector<DenseSensor> dense_sensors,
   open3d::geometry::TriangleMesh reference_mesh,
-  std::string save_path, 
-  std::array<double, 3> inspection_space_3d_min, 
-  std::array<double, 3> inspection_space_3d_max, 
-  std::array<double, 6> inspection_space_6d_min, 
-  std::array<double, 6> inspection_space_6d_max) 
-  : 
-  sparse_value_infos_{sparse_value_infos}, 
+  std::string save_path,
+  std::array<double, 3> inspection_space_3d_min,
+  std::array<double, 3> inspection_space_3d_max,
+  std::array<double, 6> inspection_space_6d_min,
+  std::array<double, 6> inspection_space_6d_max)
+:sparse_value_infos_{sparse_value_infos},
   dense_sensors_{dense_sensors},
   reference_mesh_{reference_mesh},
   inspection_space_3d_{.Min = inspection_space_3d_min, .Max = inspection_space_3d_max},
@@ -156,34 +159,34 @@ Inspection::Inspection(
 
   // Apply workspace boundaries
   recreateOctrees();
- 
+
   // Save static metadata that is unlikely to change in the DB
-  if (!saveMetaData())
-  {
+  if (!saveMetaData()) {
     throw std::runtime_error("Something went wrong while accessing the DB during metadata save.");
   }
 
   // Save the reference mesh in the DB
   storeMesh(DB_KEY_REFERENCE_MESH, reference_mesh_);
 }
-  
+
 Inspection::Inspection(
   std::vector<SparseValueInfo> sparse_value_infos,
   std::vector<DenseSensor> dense_sensors,
-  std::string mesh_file_path, 
+  std::string mesh_file_path,
   std::string save_path,
-  std::array<double, 3> inspection_space_3d_min, 
+  std::array<double, 3> inspection_space_3d_min,
   std::array<double, 3> inspection_space_3d_max,
-  std::array<double, 6> inspection_space_6d_min, 
+  std::array<double, 6> inspection_space_6d_min,
   std::array<double, 6> inspection_space_6d_max)
-: Inspection(sparse_value_infos, dense_sensors, meshFromPath(mesh_file_path), save_path, inspection_space_3d_min,
+: Inspection(sparse_value_infos, dense_sensors, meshFromPath(mesh_file_path), save_path,
+    inspection_space_3d_min,
     inspection_space_3d_max, inspection_space_6d_min, inspection_space_6d_max)
-{ }
+{}
 
-void Inspection::initDB(const std::string &file_path)
+void Inspection::initDB(const std::string & file_path)
 {
   db_options_.create_if_missing = true;
-  rocksdb::DB* db;
+  rocksdb::DB * db;
   rocksdb::Status s = rocksdb::DB::Open(db_options_, file_path, &db);
   db_ = std::unique_ptr<rocksdb::DB>(db);
   if(!s.ok()) {
@@ -203,7 +206,8 @@ void Inspection::setupSensors()
   }
 
   if (getDenseUsage()) {
-    crop_box_ = open3d::geometry::AxisAlignedBoundingBox(cast(inspection_space_3d_.Min), cast(inspection_space_3d_.Max));
+    crop_box_ = open3d::geometry::AxisAlignedBoundingBox(cast(inspection_space_3d_.Min),
+        cast(inspection_space_3d_.Max));
   }
 }
 
@@ -250,8 +254,8 @@ std::vector<uint64_t> Inspection::getSparseMeasurementsInRadius(
 }
 
 std::vector<double> Inspection::getSparseValuesAtPosition(
-  const std::string & value_name, 
-  const std::array<double, 3> & position, 
+  const std::string & value_name,
+  const std::array<double, 3> & position,
   double radius) const
 {
   std::vector<uint64_t> ids = getSparseMeasurementsInRadius(position, radius);
@@ -259,19 +263,20 @@ std::vector<double> Inspection::getSparseValuesAtPosition(
 }
 
 std::vector<double> Inspection::getSparseValuesForIds(
-  const std::string & value_name, 
+  const std::string & value_name,
   const std::vector<uint64_t> & ids) const
 {
   // Find the value info that matches the name
   auto it = std::find_if(
-    sparse_value_infos_.begin(), 
-    sparse_value_infos_.begin(), 
+    sparse_value_infos_.begin(),
+    sparse_value_infos_.begin(),
     [&value_name](const auto & info){
       return info.name == value_name;
     });
-  
+
   if (it == sparse_value_infos_.end()) {
-    throw std::runtime_error(fmt::format("Value info with name {} not found in sensor value infos", value_name));
+    throw std::runtime_error(fmt::format("Value info with name {} not found in sensor value infos",
+        value_name));
   }
 
   std::size_t value_index = std::distance(sparse_value_infos_.begin(), it);
@@ -285,7 +290,8 @@ std::vector<double> Inspection::getSparseValuesForIds(
 
 std::array<double, 6> Inspection::getDensePoseFromId(const int sample_id) const
 {
-  std::string retrieveKey = DB_KEY_DENSE_DATA_PREFIX + fmt::format("{:0>{}}", sample_id, DB_NUMBER_DIGITS_FOR_IDX);
+  std::string retrieveKey = DB_KEY_DENSE_DATA_PREFIX + fmt::format("{:0>{}}", sample_id,
+      DB_NUMBER_DIGITS_FOR_IDX);
   std::string retrievedStringData;
   db_->Get(rocksdb::ReadOptions(), retrieveKey, &retrievedStringData);
 
@@ -293,9 +299,9 @@ std::array<double, 6> Inspection::getDensePoseFromId(const int sample_id) const
   if (!retrievedEntry.ParseFromString(retrievedStringData)) {
     throw std::runtime_error("Error parsing dense sample");
   }
-  
+
   assert(retrievedEntry.entry_nr() == sample_id);
-  
+
   return transformMatrixToPose(matrixFromFlatProtoArray(retrievedEntry.extrinsic_world_matrix()));
 }
 
@@ -307,7 +313,8 @@ std::vector<std::array<double, 6>> Inspection::getMultiDensePoses(const int perc
   float entries_to_skip = dense_data_count_ / x;
 
   for (size_t i = 0; i < dense_data_count_; i = i + entries_to_skip) {
-    std::string retrieveKey = DB_KEY_DENSE_DATA_PREFIX + fmt::format("{:0>{}}", i, DB_NUMBER_DIGITS_FOR_IDX);
+    std::string retrieveKey = DB_KEY_DENSE_DATA_PREFIX + fmt::format("{:0>{}}", i,
+        DB_NUMBER_DIGITS_FOR_IDX);
     std::string retrievedStringData;
     db_->Get(rocksdb::ReadOptions(), retrieveKey, &retrievedStringData);
 
@@ -316,7 +323,8 @@ std::vector<std::array<double, 6>> Inspection::getMultiDensePoses(const int perc
       throw std::runtime_error("Error parsing dense sample");
     }
 
-    all_poses.push_back(transformMatrixToPose(matrixFromFlatProtoArray(retrievedEntry.extrinsic_world_matrix())));
+    all_poses.push_back(transformMatrixToPose(matrixFromFlatProtoArray(
+        retrievedEntry.extrinsic_world_matrix())));
   }
 
   return all_poses;
@@ -325,7 +333,8 @@ std::vector<std::array<double, 6>> Inspection::getMultiDensePoses(const int perc
 cv::Mat Inspection::getImageFromId(const int sample_id) const
 {
   // Retrieve sample from DB
-  std::string retrieveKey = DB_KEY_DENSE_DATA_PREFIX + fmt::format("{:0>{}}", sample_id, DB_NUMBER_DIGITS_FOR_IDX);
+  std::string retrieveKey = DB_KEY_DENSE_DATA_PREFIX + fmt::format("{:0>{}}", sample_id,
+      DB_NUMBER_DIGITS_FOR_IDX);
   std::string retrievedStringData;
   if (!db_->Get(rocksdb::ReadOptions(), retrieveKey, &retrievedStringData).ok()) {
     throw std::runtime_error("Error retrieving dense sample from db");
@@ -336,10 +345,10 @@ cv::Mat Inspection::getImageFromId(const int sample_id) const
   if (!retrievedEntry.ParseFromString(retrievedStringData)) {
     throw std::runtime_error("Error parsing dense sample");
   }
-  
+
   // Get sensor infos
   auto sensor = getDenseSensor(retrievedEntry.sensor_id());
-  
+
   // Copy image into the correct format
   // We need to do a copy here because the original memory will be
   // freed by RAII at the end of this function
@@ -387,32 +396,31 @@ void Inspection::addSparseMeasurementImpl(
 {
   if (!isPointInSpace(&inspection_space_3d_, position)) {
     std::cout << "Ignoring measurement at (" << position[0] << ", " << position[1] << ","
-    << position[2] << ") because it is outside inspection space." << std::endl;
+              << position[2] << ") because it is outside inspection space." << std::endl;
   } else {
 
     // Acquire the mutex
     std::lock_guard<std::mutex> lock(mtx_);
-    
+
     // Estimate min and max value for each data type reported by the sparse sensor
     for (uint64_t i = 0; i < sparse_value_infos_.size(); i++) {
       sparse_min_values_[i] = std::min(sparse_min_values_[i], values[i]);
       sparse_max_values_[i] = std::max(sparse_max_values_[i], values[i]);
     }
-    
+
     sparse_orientation_.push_back(orientation);
     sparse_value_.push_back(values);
     sparse_user_color_.push_back(user_color);
     sparse_timestamp_.push_back(timestamp);
     sparse_position_.push_back(position);
-    
+
     // Adding all values to leafs of the octree. Was faster in experiments
     // todo check if this is also the case when running the software online
     if (insert_in_octree) {
       sparse_octree_.Add(sparse_position_[sparse_data_count_], true);
     }
 
-    if (store_in_database)
-    {
+    if (store_in_database) {
 
       // Serialize data point
       json j = {
@@ -420,7 +428,7 @@ void Inspection::addSparseMeasurementImpl(
         {"position", position},
         {"orientation", orientation},
         {"value", values},
-        {"user_color", 
+        {"user_color",
           {
             {"r", user_color[0]},
             {"g", user_color[1]},
@@ -429,13 +437,13 @@ void Inspection::addSparseMeasurementImpl(
         {"sensor_id", sensor_id}
       };
       std::string serialized_datapoint = j.dump();
-  
+
       // Construct a key in the format "prefix/{sensor_id}/{meassurement_id}"
-      std::string key = DB_KEY_SPARSE_DATA_PREFIX + fmt::format("{:0>{}}", sparse_data_count_, DB_NUMBER_DIGITS_FOR_IDX);
-  
+      std::string key = DB_KEY_SPARSE_DATA_PREFIX + fmt::format("{:0>{}}", sparse_data_count_,
+          DB_NUMBER_DIGITS_FOR_IDX);
+
       // Store in DB
-      if (!db_->Put(rocksdb::WriteOptions(), key, serialized_datapoint).ok())
-      {
+      if (!db_->Put(rocksdb::WriteOptions(), key, serialized_datapoint).ok()) {
         std::cerr << "Failed to save sparse entry in DB";
       }
     }
@@ -449,8 +457,8 @@ void Inspection::addImageImpl(
   const cv::Mat & depth_image,
   double depth_trunc,
   const int sensor_id,
-  const Eigen::Matrix4d & extrinsic_optical, 
-  const Eigen::Matrix4d & extrinsic_world, 
+  const Eigen::Matrix4d & extrinsic_optical,
+  const Eigen::Matrix4d & extrinsic_world,
   bool store_in_database)
 {
   // we can only integrate if we already received the intrinsic calibration for this sensor
@@ -470,20 +478,20 @@ void Inspection::addImageImpl(
   // Convert image to open3d representation
   assert(color_image.type() == CV_8UC3);
   auto o3d_color_img = open3d::core::Tensor(
-			static_cast<const uint8_t*>(color_image.data),
-			{color_image.rows, color_image.cols, color_image.channels()},
-			open3d::core::UInt8,
+                        static_cast<const uint8_t *>(color_image.data),
+    {color_image.rows, color_image.cols, color_image.channels()},
+                        open3d::core::UInt8,
       o3d_device_);
-  
+
   // Convert depth to open3d representation
   open3d::core::Tensor o3d_depth_image;
-  if(depth_image.type() == CV_32FC1){
+  if(depth_image.type() == CV_32FC1) {
     o3d_depth_image = open3d::core::Tensor(
       depth_image.data,
       {depth_image.rows, depth_image.cols, depth_image.channels()},
       open3d::core::Float32,
       o3d_device_);
-    // TSDF with voxel block grid currently only supports to 
+    // TSDF with voxel block grid currently only supports to
     // have color images as floats when depth is float
     o3d_color_img = o3d_color_img.To(open3d::core::Dtype::Float32);
   } else if(depth_image.type() == CV_16FC1) {
@@ -493,7 +501,7 @@ void Inspection::addImageImpl(
       open3d::core::UInt16,
       o3d_device_);
   } else {
-      throw std::runtime_error("Unsupported depth encoding");
+    throw std::runtime_error("Unsupported depth encoding");
   }
 
   auto focal_length = intrinsic_[sensor_id].GetFocalLength();
@@ -501,8 +509,8 @@ void Inspection::addImageImpl(
 
   open3d::core::Tensor intrinsic_tens = open3d::core::Tensor::Init<double>(
     {{focal_length.first, 0, principal_point.first},
-    {0, focal_length.second, principal_point.second},
-    {0, 0, 1}});
+      {0, focal_length.second, principal_point.second},
+      {0, 0, 1}});
 
   open3d::core::Tensor extrinsic_tens =
     open3d::core::eigen_converter::EigenMatrixToTensor(extrinsic_optical);
@@ -529,10 +537,11 @@ void Inspection::addImageImpl(
     std::lock_guard<std::mutex> mtx_lock(mtx_);
     dense_posetree_.Insert(dense_data_count_, image_pose, false);
     dense_pose_.push_back(image_pose);
-    
+
     // save dense data to database
     if (store_in_database) {
-      std::string key = DB_KEY_DENSE_DATA_PREFIX + fmt::format("{:0>{}}", sparse_data_count_, DB_NUMBER_DIGITS_FOR_IDX);
+      std::string key = DB_KEY_DENSE_DATA_PREFIX + fmt::format("{:0>{}}", sparse_data_count_,
+          DB_NUMBER_DIGITS_FOR_IDX);
       std::string value = serializedStructForDenseEntry(
         dense_data_count_,
         sensor_id,
@@ -592,8 +601,10 @@ void Inspection::reinitializeTSDF(double voxel_length)
 void Inspection::clear()
 {
   // delete dynamic database keys
-  db_->DeleteRange(rocksdb::WriteOptions(), DB_KEY_SPARSE_DATA_PREFIX, DB_KEY_SPARSE_DATA_PREFIX + '\xFF');
-  db_->DeleteRange(rocksdb::WriteOptions(), DB_KEY_DENSE_DATA_PREFIX, DB_KEY_DENSE_DATA_PREFIX + '\xFF');
+  db_->DeleteRange(rocksdb::WriteOptions(), DB_KEY_SPARSE_DATA_PREFIX,
+      DB_KEY_SPARSE_DATA_PREFIX + '\xFF');
+  db_->DeleteRange(rocksdb::WriteOptions(), DB_KEY_DENSE_DATA_PREFIX,
+      DB_KEY_DENSE_DATA_PREFIX + '\xFF');
 
   // reset the inspection
   sparse_data_count_ = 0;
@@ -604,11 +615,11 @@ void Inspection::clear()
   sparse_orientation_.clear();
   sparse_value_.clear();
   sparse_user_color_.clear();
-  if (getSparseUsage())
-  {
+  if (getSparseUsage()) {
     auto num_sparse_types = sparse_value_infos_.size();
     sparse_min_values_ = std::vector<double>(num_sparse_types, std::numeric_limits<double>::max());
-    sparse_max_values_ = std::vector<double>(num_sparse_types, std::numeric_limits<double>::lowest());
+    sparse_max_values_ = std::vector<double>(num_sparse_types,
+        std::numeric_limits<double>::lowest());
   }
 
   dense_timestamp_.clear();
@@ -623,29 +634,29 @@ void Inspection::clear()
 bool Inspection::saveMetaData()
 {
   json j = {
-    {"header",  {
+    {"header", {
       // Store the current unix timestamp
-      {"Creation time", std::chrono::system_clock::now().time_since_epoch().count()},
+        {"Creation time", std::chrono::system_clock::now().time_since_epoch().count()},
       // Git hash of the version that created the file
-      {"Git hash", GIT_COMMIT_HASH }
-    }},
+        {"Git hash", GIT_COMMIT_HASH}
+      }},
     {"3D Inspection space", {
-      { "min", inspection_space_3d_.Min},
-      { "max", inspection_space_3d_.Max}
-    }},
+        {"min", inspection_space_3d_.Min},
+        {"max", inspection_space_3d_.Max}
+      }},
     {"6D Inspection space", {
-      { "min", inspection_space_6d_.Min},
-      { "max", inspection_space_6d_.Max}
-    }},
+        {"min", inspection_space_6d_.Min},
+        {"max", inspection_space_6d_.Max}
+      }},
     {"Sensors", {
-       {"Sparse", {
-          {"Value infos", sparse_value_infos_}
-       }},
-       {"Dense", dense_sensors_}
+        {"Sparse", {
+            {"Value infos", sparse_value_infos_}
+          }},
+        {"Dense", dense_sensors_}
       }
     }
   };
-  
+
   // Serialize the metadata into a JSON string
   std::string metadata = j.dump(2);
 
@@ -653,11 +664,10 @@ bool Inspection::saveMetaData()
   return db_->Put(rocksdb::WriteOptions(), DB_KEY_STATIC_METADATA, metadata).ok();
 }
 
-void Inspection::storeMesh(const std::string &key, const open3d::geometry::TriangleMesh &mesh)
+void Inspection::storeMesh(const std::string & key, const open3d::geometry::TriangleMesh & mesh)
 {
   // Check if the mesh has any vertices
-  if (mesh.vertices_.size() == 0)
-  {
+  if (mesh.vertices_.size() == 0) {
     return;
   }
 
@@ -665,10 +675,9 @@ void Inspection::storeMesh(const std::string &key, const open3d::geometry::Trian
   std::string temp_file = fmt::format("/tmp/vinspect_mesh_{}.ply", std::rand());
   open3d::io::WriteTriangleMesh(temp_file, mesh, true);
   std::ifstream file(temp_file);
-  
+
   // Check if file can be opened
-  if (!file.is_open())
-  {
+  if (!file.is_open()) {
     throw std::runtime_error(fmt::format("Error opening temporary file: '{}'", temp_file));
   }
 
@@ -682,25 +691,22 @@ void Inspection::storeMesh(const std::string &key, const open3d::geometry::Trian
   std::remove(temp_file.c_str());
 
   // Save in database
-  if(!db_->Put(rocksdb::WriteOptions(), key, content).ok())
-  {
+  if(!db_->Put(rocksdb::WriteOptions(), key, content).ok()) {
     throw std::runtime_error("Could not store mesh in db");
   }
 }
 
-void Inspection::loadMesh(const std::string &key, open3d::geometry::TriangleMesh &mesh)
+void Inspection::loadMesh(const std::string & key, open3d::geometry::TriangleMesh & mesh)
 {
-  // Get mesh from db 
+  // Get mesh from db
   std::string serialized_mesh;
 
   auto response = db_->Get(rocksdb::ReadOptions(), key, &serialized_mesh);
-  if (response.IsNotFound())
-  {
+  if (response.IsNotFound()) {
     // No mesh present, initialize with empty mesh instead
     mesh = open3d::geometry::TriangleMesh();
     return;
-  } else if (!response.ok())
-  {
+  } else if (!response.ok()) {
     throw std::runtime_error("Could load mesh from db");
   }
 
@@ -709,8 +715,7 @@ void Inspection::loadMesh(const std::string &key, open3d::geometry::TriangleMesh
 
   std::ofstream file(temp_file);
   // Check if file can be opened
-  if (!file.is_open())
-  {
+  if (!file.is_open()) {
     throw std::runtime_error(fmt::format("Error opening temporary file: '{}'", temp_file));
   }
 
@@ -719,11 +724,10 @@ void Inspection::loadMesh(const std::string &key, open3d::geometry::TriangleMesh
   file.close();
 
   // Load mesh into open3d
-  if (!open3d::io::ReadTriangleMesh(temp_file, mesh))
-  {
+  if (!open3d::io::ReadTriangleMesh(temp_file, mesh)) {
     throw std::runtime_error("Could not load mesh from file");
   }
-  
+
   // Close and remove the file
   std::remove(temp_file.c_str());
 }

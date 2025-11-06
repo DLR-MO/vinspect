@@ -73,7 +73,7 @@ class Inspection
 {
 public:
   /**
-   * Constructor for the Inspection class. 
+   * Constructor for the Inspection class.
    * @param sparse_value_infos The sparse values / data types used for the inspection.
    * @param dense_sensors The dense sensors used for the inspection.
    * @param mesh The reference mesh of the part that should be inspected.
@@ -87,33 +87,33 @@ public:
     std::vector<SparseValueInfo> sparse_value_infos,
     std::vector<DenseSensor> dense_sensors,
     open3d::geometry::TriangleMesh mesh,
-    std::string save_path, 
+    std::string save_path,
     std::array<double, 3> inspection_space_3d_min = {-1, -1, -1},
-    std::array<double, 3> inspection_space_3d_max = {1, 1, 1}, 
-    std::array<double, 6> inspection_space_6d_min = {-1, -1, -1, -1, -1, -1}, 
+    std::array<double, 3> inspection_space_3d_max = {1, 1, 1},
+    std::array<double, 6> inspection_space_6d_min = {-1, -1, -1, -1, -1, -1},
     std::array<double, 6> inspection_space_6d_max = {1, 1, 1, 1, 1, 1}
   );
 
   Inspection(
     std::vector<SparseValueInfo> sparse_value_infos,
     std::vector<DenseSensor> dense_sensors,
-    std::string mesh_file_path, 
+    std::string mesh_file_path,
     std::string save_path,
     std::array<double, 3> inspection_space_3d_min = {-1, -1, -1},
-    std::array<double, 3> inspection_space_3d_max = {1, 1, 1}, 
-    std::array<double, 6> inspection_space_6d_min = {-1, -1, -1, -1, -1, -1}, 
+    std::array<double, 3> inspection_space_3d_max = {1, 1, 1},
+    std::array<double, 6> inspection_space_6d_min = {-1, -1, -1, -1, -1, -1},
     std::array<double, 6> inspection_space_6d_max = {1, 1, 1, 1, 1, 1}
   );
 
-  Inspection(const std::string &file_path);
+  Inspection(const std::string & file_path);
 
   // Allow move
-  Inspection(Inspection&&) = default;
-  Inspection& operator=(Inspection&&)      = default;
+  Inspection(Inspection &&) = default;
+  Inspection & operator=(Inspection &&)      = default;
 
   // Prohibit copy
-  Inspection(const Inspection&) = delete;
-  Inspection& operator=(const Inspection&) = delete;
+  Inspection(const Inspection &) = delete;
+  Inspection & operator=(const Inspection &) = delete;
 
   std::string toString() const;
 
@@ -123,17 +123,17 @@ public:
    */
   open3d::geometry::TriangleMesh getMesh() const;
 
-  inline bool getDenseUsage() const { return dense_sensors_.size() > 0; }
+  inline bool getDenseUsage() const {return dense_sensors_.size() > 0;}
 
   /**
    * Returns the dense sensor object given an id
    * @param sensor_id sensor id
    * @return sensor object
    */
-  DenseSensor getDenseSensor(int sensor_id) const {
-    for (const auto& sensor : dense_sensors_) {
-      if (sensor.getId() == sensor_id)
-      {
+  DenseSensor getDenseSensor(int sensor_id) const
+  {
+    for (const auto & sensor : dense_sensors_) {
+      if (sensor.getId() == sensor_id) {
         return sensor;
       }
     }
@@ -225,7 +225,8 @@ public:
     const std::array<double, 4> & orientation, const std::vector<double> & values,
     const Eigen::Vector3d & user_color = {0.0, 0.0, 0.0}, bool insert_in_octree = true)
   {
-    addSparseMeasurementImpl(timestamp, sensor_id, position, orientation, values, user_color, insert_in_octree, true);
+    addSparseMeasurementImpl(timestamp, sensor_id, position, orientation, values, user_color,
+        insert_in_octree, true);
   }
 
   /**
@@ -239,16 +240,17 @@ public:
   void addImage(
     const cv::Mat & color_image,
     const cv::Mat & depth_image,
-    double depth_trunc, 
+    double depth_trunc,
     const int sensor_id,
-    const Eigen::Matrix4d & extrinsic_optical, 
+    const Eigen::Matrix4d & extrinsic_optical,
     const Eigen::Matrix4d & extrinsic_world)
   {
-    addImageImpl(color_image, depth_image, depth_trunc, sensor_id, extrinsic_optical, extrinsic_world, true);
+    addImageImpl(color_image, depth_image, depth_trunc, sensor_id, extrinsic_optical,
+        extrinsic_world, true);
   }
 
   std::shared_ptr<open3d::geometry::TriangleMesh> extractDenseReconstruction();
-  
+
   void saveDenseReconstruction(std::string filename);
 
   inline uint64_t getSparseDataCount() const {return sparse_data_count_;}
@@ -260,7 +262,7 @@ public:
   {
     return sparse_orientation_;
   }
-  inline bool getSparseUsage() const { return sparse_value_infos_.size() > 0; }
+  inline bool getSparseUsage() const {return sparse_value_infos_.size() > 0;}
   inline const std::vector<std::vector<double>> & getSparseValue() const {return sparse_value_;}
   inline const std::vector<Eigen::Vector3d> & getSparseUserColor() const
   {
@@ -282,12 +284,15 @@ public:
     intrinsic_[sensor_id] = intrinsic;
   }
 
-  void setIntrinsic2( int sensor_id, int width, int height, double fx, double fy, double cx, double cy)
+  void setIntrinsic2(
+    int sensor_id, int width, int height, double fx, double fy, double cx,
+    double cy)
   {
     intrinsic_[sensor_id] = open3d::camera::PinholeCameraIntrinsic(width, height, fx, fy, cx, cy);
   }
 
-  std::vector<std::string> getSparseUnits() {
+  std::vector<std::string> getSparseUnits()
+  {
     std::vector<std::string> sparse_units;
     for (const auto & value_info : sparse_value_infos_) {
       sparse_units.push_back(value_info.unit);
@@ -301,7 +306,7 @@ private:
   /**
    * Loads or creates the DB file if it does not exist
    */
-  void initDB(const std::string &file_path);
+  void initDB(const std::string & file_path);
 
   /**
    * Shared setup code between the constructors
@@ -319,27 +324,28 @@ private:
    * @param key the key under which the mesh should be stored
    * @param mesh the mesh to be stored
    */
-  void storeMesh(const std::string &key, const open3d::geometry::TriangleMesh &mesh);
+  void storeMesh(const std::string & key, const open3d::geometry::TriangleMesh & mesh);
 
   /**
    * Loads a mesh from the DB.
    * @param key the key from which we want to load the mesh
    * @param mesh we load into this mesh
    */
-  void loadMesh(const std::string &key, open3d::geometry::TriangleMesh &mesh);
+  void loadMesh(const std::string & key, open3d::geometry::TriangleMesh & mesh);
 
   void addSparseMeasurementImpl(
     double timestamp, int sensor_id, const std::array<double, 3> & position,
     const std::array<double, 4> & orientation, const std::vector<double> & values,
-    const Eigen::Vector3d & user_color = {0.0, 0.0, 0.0}, bool insert_in_octree = true, bool store_in_database = true);
+    const Eigen::Vector3d & user_color = {0.0, 0.0, 0.0}, bool insert_in_octree = true,
+    bool store_in_database = true);
 
   void addImageImpl(
     const cv::Mat & color_image,
     const cv::Mat & depth_image,
-    double depth_trunc, 
+    double depth_trunc,
     const int sensor_id,
-    const Eigen::Matrix4d & extrinsic_optical, 
-    const Eigen::Matrix4d & extrinsic_world, 
+    const Eigen::Matrix4d & extrinsic_optical,
+    const Eigen::Matrix4d & extrinsic_world,
     bool store_in_database = true);
 
   std::vector<SparseValueInfo> sparse_value_infos_;

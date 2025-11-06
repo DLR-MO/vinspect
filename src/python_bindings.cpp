@@ -43,32 +43,33 @@ void computeColoredMesh(Inspection & inspection, double point_radius)
   open3d::geometry::TriangleMesh mesh = sparse_mesh.createMesh(point_radius, false, 0, 0);
 }
 
-// WARNING! This methods uses a zero-copy mechanism. 
+// WARNING! This methods uses a zero-copy mechanism.
 // The lifetime of the image data is still bound to the original python object
-// make sure the input object outlives the result from this function! 
+// make sure the input object outlives the result from this function!
 template<int CVType, typename T>
 cv::Mat imagePyToCpp(const py::array_t<T> & image)
 {
   auto rows = image.shape(0);
   auto cols = image.shape(1);
 
-  cv::Mat cv_image(rows, cols, CVType, (unsigned char*)image.data());
+  cv::Mat cv_image(rows, cols, CVType, (unsigned char *)image.data());
   return cv_image;
 }
 
 template<int CVDepthType, typename TDepth>
 void addImage(
-  Inspection * inspection, 
-  const py::array_t<uint8_t> & color_image, 
+  Inspection * inspection,
+  const py::array_t<uint8_t> & color_image,
   const py::array_t<TDepth> & depth_image,
-  float depth_trunc, 
-  const int sensor_id, 
+  float depth_trunc,
+  const int sensor_id,
   const Eigen::Matrix4d & extrinsic_optical,
   const Eigen::Matrix4d & extrinsic_world)
 {
   auto color_img = imagePyToCpp<CV_8UC3, uint8_t>(color_image);
   auto depth_img = imagePyToCpp<CVDepthType, TDepth>(depth_image);
-  inspection->addImage(color_img, depth_img, depth_trunc, sensor_id, extrinsic_optical, extrinsic_world);
+  inspection->addImage(color_img, depth_img, depth_trunc, sensor_id, extrinsic_optical,
+      extrinsic_world);
 }
 
 PYBIND11_MODULE(vinspect_py, m)
@@ -78,16 +79,16 @@ PYBIND11_MODULE(vinspect_py, m)
   py::class_<Inspection, std::unique_ptr<Inspection>>(m, "Inspection")
   .def(
     py::init<
-      std::vector<SparseValueInfo>, 
+      std::vector<SparseValueInfo>,
       std::vector<DenseSensor>,
-      std::string, 
       std::string,
-      std::array<double, 3>, 
-      std::array<double, 3>, 
-      std::array<double, 6>, 
+      std::string,
+      std::array<double, 3>,
+      std::array<double, 3>,
+      std::array<double, 6>,
       std::array<double, 6>>(),
     py::arg("sparse_value_infos"),
-    py::arg("dense_sensors"), 
+    py::arg("dense_sensors"),
     py::arg("reference_mesh_file_path") = "",
     py::arg("save_path") = "",
     py::arg("inspection_space_3d_min") = std::array<double, 3>(),
