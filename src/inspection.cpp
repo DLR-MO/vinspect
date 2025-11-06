@@ -7,7 +7,7 @@ namespace vinspect
 {
 
 // This constructor loads an already existing vinspect project file
-Inspection::Inspection(const std::string & file_path) {
+Inspection::Inspection(const std::string & file_path) : device_{selectDevice()} {
   if (!std::filesystem::exists(file_path)) {
     throw std::runtime_error("File does not exist: " + file_path);
   }
@@ -141,7 +141,8 @@ Inspection::Inspection(
   dense_sensors_{dense_sensors},
   reference_mesh_{reference_mesh},
   inspection_space_3d_{.Min = inspection_space_3d_min, .Max = inspection_space_3d_max},
-  inspection_space_6d_{.Min = inspection_space_6d_min, .Max = inspection_space_6d_max}
+  inspection_space_6d_{.Min = inspection_space_6d_min, .Max = inspection_space_6d_max},
+  device_{selectDevice()}
 {
   // Create new database
   initDB(save_path);
@@ -199,11 +200,6 @@ void Inspection::setupSensors()
 
   if (getDenseUsage()) {
     crop_box_ = open3d::geometry::AxisAlignedBoundingBox(cast(inspection_space_3d_.Min), cast(inspection_space_3d_.Max));
-    // todo we might also want to have multiple TSDF volumes for different dense sensor types,
-    // but also use multiple dense sensors of the same type for the same tsdf
-    // todo don't hardcode the parameters of the tsdf volume
-    tsdf_volume_ = std::make_shared<open3d::pipelines::integration::ScalableTSDFVolume>(
-      4.0 / 512.0, 0.04, open3d::pipelines::integration::TSDFVolumeColorType::RGB8);
   }
 }
 
@@ -462,8 +458,46 @@ void Inspection::addImageImpl(
               << " Will not integrate." << std::endl;
     return;
   }
+  
+  // Todo avoid copy
+  open3d::t::geometry::Image color_img_tens =
+    open3d::t::geometry::Image::FromLegacy(image.color_, o3d_device_);
+  const open3d::t::geometry::Image depth_img_tens =
+    open3d::t::geometry::Image::FromLegacy(image.depth, o3d_device_);
 
-  tsdf_volume_->Integrate(image, intrinsics->second, extrinsic_optical);
+  if (depth_img_tens.GetDtype() == open3d::core::Dtype::Float32){
+    // TSDF with voxel block grid currently only supports to have color images as floats when depth is float
+    color_img_tens = color_img_tens.To(open3d::core::Dtype::Float32);
+  }
+
+  auto focal_length = intrinsic_[sensor_id].GetFocalLength();
+  auto principal_point = intrinsic_[sensor_id].GetPrincipalPoint();
+
+  open3d::core::Tensor intrinsic_tens = open3d::core::Tensor::Init<double>(
+    {{focal_length.first, 0, principal_point.first},
+    {0, focal_length.second, principal_point.second},
+    {0, 0, 1}});
+
+  open3d::core::Tensor extrinsic_tens =
+    open3d::core::eigen_converter::EigenMatrixToTensor(extrinsic_optical);
+
+  open3d::core::Tensor frustum_block_coords;
+  try {
+    //todo it might make sense to restrict these blocks to the cropped area (would reduce RAM usage)
+    //todo depth_scale and depth_trunc should either be parameters or handled beforehands
+    frustum_block_coords = voxel_grid_.GetUniqueBlockCoordinates(depth_img_tens, intrinsic_tens,
+      extrinsic_tens, depth_scale, depth_trunc);
+  } catch (const std::runtime_error & e) {
+    std::cerr << "no block is touched in tsdf volume, abort integration of this image. "
+      "please check depth_scale and voxel_size, as well as depth_max of GetUniqueBlockCoordinates"
+              << std::endl;
+    return;
+  }
+
+  //todo should use other integrate method which uses different intrinsics for depth and color images
+  voxel_grid_.Integrate(frustum_block_coords, depth_img_tens, color_img_tens, intrinsic_tens,
+      extrinsic_tens);
+
   std::array<double, 6> image_pose = transformMatrixToPose(extrinsic_world);
 
   {
@@ -482,10 +516,15 @@ void Inspection::addImageImpl(
   }
 }
 
-std::shared_ptr<open3d::geometry::TriangleMesh> Inspection::extractDenseReconstruction() const
+std::shared_ptr<open3d::geometry::TriangleMesh> Inspection::extractDenseReconstruction()
 {
   // todo beware of copying the returned mesh
-  std::shared_ptr<open3d::geometry::TriangleMesh> mesh = tsdf_volume_->ExtractTriangleMesh();
+  //TDODO it should propably be also a parameter how often we want to see one point
+  open3d::geometry::TriangleMesh mesh_d = voxel_grid_.ExtractTriangleMesh(0.0f).ToLegacy();
+  std::shared_ptr<open3d::geometry::TriangleMesh> mesh = std::make_shared<open3d::geometry::TriangleMesh>(mesh_d);
+
+  // todo remove open3d::visualization::DrawGeometries({mesh});
+
   // todo maybe give some warning if the whole mesh is cropped to 0 triangles
   std::shared_ptr<open3d::geometry::TriangleMesh> cropped_mesh = mesh->Crop(crop_box_);
   return cropped_mesh;
@@ -510,10 +549,12 @@ void Inspection::recreateOctrees()
   }
 }
 
-void Inspection::reinitializeTSDF(double voxel_length, double sdf_trunc)
+void Inspection::reinitializeTSDF(double voxel_length)
 {
-  tsdf_volume_ = std::make_shared<open3d::pipelines::integration::ScalableTSDFVolume>(
-    voxel_length, sdf_trunc, open3d::pipelines::integration::TSDFVolumeColorType::RGB8);
+  voxel_grid_ =
+    open3d::t::geometry::VoxelBlockGrid({"tsdf", "weight", "color"},
+      {open3d::core::Dtype::Float32, open3d::core::Dtype::UInt16, open3d::core::Dtype::UInt16},
+      {{1}, {1}, {3}}, voxel_length, 16, 50000, o3d_device_);   //todo make block count a parameter
 }
 
 void Inspection::clear()

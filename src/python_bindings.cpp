@@ -94,6 +94,75 @@ void addImagePy(
   inspection.addImage(*rgbd.get(), sensor_id, extrinsic_optical, extrinsic_world);
 }
 
+template<typename T>
+open3d::geometry::Image imagePyToCpp(const py::array_t<T> image, std::string encoding, bool is_depth_img)
+{
+  //TODO make sure that there are no copy opertions happening here
+  int rows = image.shape(0);
+  int cols = image.shape(1);
+  int channels;
+  int stride;
+  if (is_depth_img) {
+    channels = 1;
+    stride = 0;
+  } else {
+    channels = image.shape(2);
+    stride = image.strides(0);
+  }
+  int bytes_per_channel;
+  int color_encoding_int;
+  if (encoding == "8U") {
+    bytes_per_channel = 1;
+    color_encoding_int = CV_8U;
+  } else if (encoding == "16U") {
+    bytes_per_channel = 2;
+    color_encoding_int = CV_16U;
+  } else if (encoding == "32F") {
+    bytes_per_channel = 4;
+    color_encoding_int = CV_32F;
+  } else {
+    std::cout << "Image encoding " << encoding << " can not be processed" << std::endl;
+    exit(1);
+  }
+  cv::Mat cv_mat = cv::Mat(rows, cols, CV_MAKETYPE(color_encoding_int, channels), const_cast<T * >(image.data()), stride);
+  open3d::geometry::Image img;
+  img.Prepare(cols, rows, channels, bytes_per_channel);
+  memcpy(img.data_.data(), cv_mat.data, img.data_.size());
+  return img;
+}
+
+void addImage8_16(
+  Inspection * inspection, const py::array_t<uint8_t> & color_image, std::string color_encoding, 
+  const py::array_t<uint16_t> & depth_image, std::string depth_encoding, float depth_scale,
+  float depth_trunc, const int sensor_id, const Eigen::Matrix4d & extrinsic_optical,
+  const Eigen::Matrix4d & extrinsic_world)
+{
+  open3d::geometry::Image color_img = imagePyToCpp<uint8_t>(color_image, color_encoding, false);
+  open3d::geometry::Image depth_img = imagePyToCpp<uint16_t>(depth_image, depth_encoding, true);
+
+  std::shared_ptr<open3d::geometry::RGBDImage> rgbd =
+    open3d::geometry::RGBDImage::CreateFromColorAndDepth(color_img, depth_img, depth_scale,
+      depth_trunc, false);
+
+  inspection->addImage(*rgbd.get(), sensor_id, extrinsic_optical, extrinsic_world);
+}
+
+void addImage8_float(
+  Inspection * inspection, const py::array_t<uint8_t> & color_image, std::string color_encoding, 
+  const py::array_t<float> & depth_image, std::string depth_encoding, float depth_scale,
+  float depth_trunc, const int sensor_id, const Eigen::Matrix4d & extrinsic_optical,
+  const Eigen::Matrix4d & extrinsic_world)
+{
+  open3d::geometry::Image color_img = imagePyToCpp<uint8_t>(color_image, color_encoding, false);
+  open3d::geometry::Image depth_img = imagePyToCpp<float>(depth_image, depth_encoding, true);
+
+  std::shared_ptr<open3d::geometry::RGBDImage> rgbd =
+    open3d::geometry::RGBDImage::CreateFromColorAndDepth(color_img, depth_img, depth_scale,
+      depth_trunc, false);
+
+  inspection->addImage(*rgbd.get(), sensor_id, extrinsic_optical, extrinsic_world);
+}
+
 
 PYBIND11_MODULE(vinspect_py, m)
 {
@@ -157,7 +226,8 @@ PYBIND11_MODULE(vinspect_py, m)
 
   m.def("show_colored_mesh", &showColoredMesh);
   m.def("compute_colored_mesh", &computeColoredMesh);
-  m.def("add_image_py", &addImagePy);
+  m.def("add_image_py", &addImage8_float);
+  m.def("add_image_py", &addImage8_16);
 }
 }  // namespace vinspect
 #endif

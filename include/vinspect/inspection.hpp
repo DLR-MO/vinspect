@@ -20,6 +20,7 @@
 #include <string>
 #include <thread>
 #include <tuple>
+#include <unistd.h>
 #include <vector>
 
 #include <fmt/format.h>
@@ -31,7 +32,6 @@
 #include "open3d/Open3D.h"
 #include "open3d/geometry/TriangleMesh.h"
 #include "open3d/io/ModelIO.h"
-#include "open3d/pipelines/integration/TSDFVolume.h"
 
 #include "vinspect/sensors.hpp"
 #include "vinspect/pose_tree/octree.h"
@@ -64,7 +64,6 @@ using json = nlohmann::json;
 
 namespace vinspect
 {
-
 /**
  *Class for storing and accessing the inspection data.
  **/
@@ -231,7 +230,7 @@ public:
    * Recreates the octrees. Useful if the inspection space should be adapted to the current data.
    */
   void recreateOctrees();
-  void reinitializeTSDF(double voxel_length, double sdf_trunc);
+  void reinitializeTSDF(double voxel_length);
 
   void clear();
 
@@ -349,14 +348,14 @@ private:
   OrthoTree::BoundingBoxND<6> inspection_space_6d_;
   std::vector<double> sparse_min_values_;
   std::vector<double> sparse_max_values_;
+  open3d::core::Device o3d_device_;
+  open3d::t::geometry::VoxelBlockGrid voxel_grid_;
+  std::map<int, open3d::camera::PinholeCameraIntrinsic> intrinsic_;
+  open3d::geometry::AxisAlignedBoundingBox crop_box_;
   std::unique_ptr<rocksdb::DB> db_;
   rocksdb::Options db_options_;
   rocksdb::Status db_status_;
   std::mutex mtx_;
-
-  std::shared_ptr<open3d::pipelines::integration::ScalableTSDFVolume> tsdf_volume_;
-  std::map<int, open3d::camera::PinholeCameraIntrinsic> intrinsic_;
-  open3d::geometry::AxisAlignedBoundingBox crop_box_;
 };
 }  // namespace vinspect
 #endif  // VINSPECT__INSPECTION_H_

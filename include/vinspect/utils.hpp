@@ -89,5 +89,15 @@ std::vector<std::string> splitStringArray(
     return arr;
   }
 
+  open3d::core::Device selectDevice()
+  {
+    std::vector<open3d::core::Device> cuda_devices = open3d::core::Device::GetAvailableCUDADevices();
+    if (cuda_devices.size() > 0) {
+      return cuda_devices[0];
+    } else {
+      return open3d::core::Device("CPU:0");
+    }
+  }
+
 }  // namespace vinspect
 #endif  // VINSPECT__UTILS_H_
