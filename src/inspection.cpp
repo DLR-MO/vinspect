@@ -477,32 +477,44 @@ void Inspection::addImageImpl(
 
   // Convert image to open3d representation
   assert(color_image.type() == CV_8UC3);
-  auto o3d_color_img = open3d::core::Tensor(
-                        static_cast<const uint8_t *>(color_image.data),
+  // This is zero-copy, so make sure the original Mat outlives this object
+  open3d::core::Tensor color_image_o3d_view(
+    color_image.data,
+    open3d::core::UInt8,
     {color_image.rows, color_image.cols, color_image.channels()},
-                        open3d::core::UInt8,
-      o3d_device_);
+            /*stride in elements (not bytes)*/
+    {int64_t(color_image.step[0] / color_image.elemSize1()),
+      int64_t(color_image.step[1] / color_image.elemSize1()), 1});
+  // This copies the data to the GPU if needed
+  // If we run on the CPU, this is also zero copy
+  // Make sure the original Mat outlives this object
+  auto o3d_color_image = color_image_o3d_view.To(o3d_device_);
+  
+  // TSDF with voxel block grid currently only supports to
+  // have color images as floats when depth is float
+  if(depth_image.type() == CV_32FC1) {
+    o3d_color_image = o3d_color_image.To(open3d::core::Dtype::Float32);
+  }
 
   // Convert depth to open3d representation
-  open3d::core::Tensor o3d_depth_image;
-  if(depth_image.type() == CV_32FC1) {
-    o3d_depth_image = open3d::core::Tensor(
-      depth_image.data,
-      {depth_image.rows, depth_image.cols, depth_image.channels()},
-      open3d::core::Float32,
-      o3d_device_);
-    // TSDF with voxel block grid currently only supports to
-    // have color images as floats when depth is float
-    o3d_color_img = o3d_color_img.To(open3d::core::Dtype::Float32);
-  } else if(depth_image.type() == CV_16FC1) {
-    o3d_depth_image = open3d::core::Tensor(
-      depth_image.data,
-      {depth_image.rows, depth_image.cols, depth_image.channels()},
-      open3d::core::UInt16,
-      o3d_device_);
-  } else {
-    throw std::runtime_error("Unsupported depth encoding");
-  }
+  // Map types
+  assert(depth_image.type() == CV_16UC1 or depth_image.type() == CV_32FC1);
+  std::map<int, open3d::core::Dtype> depth_type_map = {
+    {CV_32FC1, open3d::core::Float32},
+    {CV_16UC1, open3d::core::UInt16},
+  };
+  // This is zero-copy, so make sure the original Mat outlives this object
+  open3d::core::Tensor depth_image_o3_view(
+    depth_image.data,
+    depth_type_map.at(depth_image.type()),
+    {depth_image.rows, depth_image.cols, depth_image.channels()},
+            /*stride in elements (not bytes)*/
+    {int64_t(depth_image.step[0] / depth_image.elemSize1()),
+      int64_t(depth_image.step[1] / depth_image.elemSize1()), 1});
+  // This copies the data to the GPU if needed
+  // If we run on the CPU, this is also zero copy
+  // Make sure the original Mat outlives this object
+  auto o3d_depth_image = depth_image_o3_view.To(o3d_device_);
 
   auto focal_length = intrinsic_[sensor_id].GetFocalLength();
   auto principal_point = intrinsic_[sensor_id].GetPrincipalPoint();
@@ -528,7 +540,7 @@ void Inspection::addImageImpl(
   }
 
   // todo should use other integrate method which uses different intrinsics for depth and color images
-  voxel_grid_.Integrate(frustum_block_coords, o3d_depth_image, o3d_color_img, intrinsic_tens,
+  voxel_grid_.Integrate(frustum_block_coords, o3d_depth_image, o3d_color_image, intrinsic_tens,
       extrinsic_tens, depth_scale, depth_trunc);
 
   std::array<double, 6> image_pose = transformMatrixToPose(extrinsic_world);
@@ -549,7 +561,7 @@ void Inspection::addImageImpl(
         depth_image,
         depth_trunc,
         extrinsic_optical,
-        extrinsic_world);
+        extrinsic_world);  // todo store intrinsics too
       db_->Put(rocksdb::WriteOptions(), key, value);
     }
 
