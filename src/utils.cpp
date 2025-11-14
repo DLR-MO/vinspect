@@ -199,7 +199,7 @@ Eigen::Matrix4d matrixFromFlatProtoArray(const google::protobuf::RepeatedField<d
   for (int i = 0; i < 16; ++i) {
     int row = i / 4;
     int col = i % 4;
-    matrix(row, col) = flat_array[i];
+    matrix(col, row) = flat_array[i];
   }
   return matrix;
 }

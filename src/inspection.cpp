@@ -336,8 +336,9 @@ cv::Mat Inspection::getImageFromId(const int sample_id) const
   std::string retrieveKey = DB_KEY_DENSE_DATA_PREFIX + fmt::format("{:0>{}}", sample_id,
       DB_NUMBER_DIGITS_FOR_IDX);
   std::string retrievedStringData;
-  if (!db_->Get(rocksdb::ReadOptions(), retrieveKey, &retrievedStringData).ok()) {
-    throw std::runtime_error("Error retrieving dense sample from db");
+  auto res = db_->Get(rocksdb::ReadOptions(), retrieveKey, &retrievedStringData);
+  if (!res.ok()) {
+    throw std::runtime_error(fmt::format("Error retrieving dense sample from db. ({})", static_cast<unsigned>(res.code())));
   }
 
   // Deserialize sample
@@ -493,7 +494,7 @@ void Inspection::addImageImpl(
   // TSDF with voxel block grid currently only supports to
   // have color images as floats when depth is float
   if(depth_image.type() == CV_32FC1) {
-    o3d_color_image = o3d_color_image.To(open3d::core::Dtype::Float32);
+    o3d_color_image = o3d_color_image.To(open3d::core::Dtype::Float32) / 255;
   }
 
   // Convert depth to open3d representation
@@ -552,7 +553,7 @@ void Inspection::addImageImpl(
 
     // save dense data to database
     if (store_in_database) {
-      std::string key = DB_KEY_DENSE_DATA_PREFIX + fmt::format("{:0>{}}", sparse_data_count_,
+      std::string key = DB_KEY_DENSE_DATA_PREFIX + fmt::format("{:0>{}}", dense_data_count_,
           DB_NUMBER_DIGITS_FOR_IDX);
       std::string value = serializedStructForDenseEntry(
         dense_data_count_,
@@ -573,13 +574,12 @@ std::shared_ptr<open3d::geometry::TriangleMesh> Inspection::extractDenseReconstr
 {
   // todo beware of copying the returned mesh
   // TODO it should probably be also a parameter how often we want to see one point
-  open3d::geometry::TriangleMesh mesh_d = voxel_grid_.ExtractTriangleMesh(0.0f).ToLegacy();
+  open3d::geometry::TriangleMesh mesh_d = voxel_grid_.ExtractTriangleMesh(10.0f).ToLegacy();
   std::shared_ptr<open3d::geometry::TriangleMesh> mesh = std::make_shared<open3d::geometry::TriangleMesh>(mesh_d);
-
-  // todo remove open3d::visualization::DrawGeometries({mesh});
 
   // todo maybe give some warning if the whole mesh is cropped to 0 triangles
   std::shared_ptr<open3d::geometry::TriangleMesh> cropped_mesh = mesh->Crop(crop_box_);
+
   return cropped_mesh;
 }
 
