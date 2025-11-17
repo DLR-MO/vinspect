@@ -649,12 +649,12 @@ void Inspection::clearSparse(bool wipe_db)
 
   // Clear non persistent storage
   sparse_data_count_ = 0;
-  sparse_octree_.Clear();
   sparse_timestamp_.clear();
   sparse_position_.clear();
   sparse_orientation_.clear();
   sparse_value_.clear();
   sparse_user_color_.clear();
+
   auto num_sparse_types = sparse_value_infos_.size();
   sparse_min_values_ = std::vector<double>(num_sparse_types, std::numeric_limits<double>::max());
   sparse_max_values_ = std::vector<double>(num_sparse_types,
