@@ -10,7 +10,7 @@ namespace vinspect
 Inspection::Inspection(const std::string & file_path)
 : o3d_device_{selectDevice()}
 {
-  if (!std::filesystem::exists(file_path)) {
+  if (!fs::exists(file_path)) {
     throw std::runtime_error("File does not exist: " + file_path);
   }
   std::cout << "Loading data from file" << std::endl;
@@ -759,113 +759,180 @@ void Inspection::storeMesh(const std::string & key, const open3d::geometry::Tria
 
 void Inspection::saveDiconde(const std::string & folder_path)
 {
-  // // Acquire mutex for the full save duration, so nothing changes during the saving process
-  // std::lock_guard<std::mutex> lock(mtx_);
+  // Acquire mutex for the full save duration, so nothing changes during the saving process
+  std::lock_guard<std::mutex> lock(mtx_);
 
-  // // Much of the meta data will be duplicated among the different diconde files, 
-  // // so we should create the header first
-  // // TODO
+  // Create Folder
+  const fs::path save_folder(folder_path);
+  const fs::path diconde_folder = save_folder / "diconde";
+  const fs::path image_folder = diconde_folder / "images"; 
+
+  std::filesystem::create_directory(diconde_folder);
+  std::filesystem::create_directory(image_folder);
+
+
+  // Create global metadata    // TODO rename to DICONDE names
+  auto patient_name = "Doe^John";
+  auto patient_id = "0000";
+  std::string seriesUID, studyUID;
+
+  // TODO recheck what these are and if we use them correctly
+  char seriesUid[100], studyInstanceUID[100];
+  dcmGenerateUniqueIdentifier(seriesUid);
+  dcmGenerateUniqueIdentifier(studyInstanceUID);
+
+
+  // Go through all images
+  // TODO reduce the code duplication for this operation
+  std::size_t img_idx = 0;
+  auto it = std::unique_ptr<rocksdb::Iterator>(db_->NewIterator(rocksdb::ReadOptions()));
+  for (it->Seek(DB_KEY_DENSE_DATA_PREFIX);
+    it->Valid() && it->key().starts_with(DB_KEY_DENSE_DATA_PREFIX); it->Next())
+  {
+    const auto sample = it->value().ToString();
+
+    Dense retrievedEntry;
+    if (!retrievedEntry.ParseFromString(sample)) {
+      throw std::runtime_error("Failed to parse dense data");
+    }
+    
+    // Get sensor information
+    const auto sensor = getDenseSensor(retrievedEntry.sensor_id());
+    
+    // Write RGB Image
+    {  
+      DcmFileFormat fileformat;
+      DcmDataset *dataset = fileformat.getDataset();
+
+      dataset->putAndInsertString(DCM_PatientID, patient_id);
+      dataset->putAndInsertString(DCM_PatientName, patient_name);
+
+      dataset->putAndInsertString(DCM_SOPClassUID, UID_SecondaryCaptureImageStorage);
+      
+      // Create UID for this object
+      char sop_uid[100];
+      dcmGenerateUniqueIdentifier(sop_uid, SITE_INSTANCE_UID_ROOT);
+      
+      dataset->putAndInsertString(DCM_SOPInstanceUID, sop_uid);
+      dataset->putAndInsertString(DCM_SeriesInstanceUID, seriesUid);
+
+      dataset->putAndInsertString(DCM_Modality, "OT");   // Other
+      dataset->putAndInsertString(DCM_ConversionType, "DV");
+
+      dataset->putAndInsertString(DCM_StudyInstanceUID, studyInstanceUID);
+
+
+      // ------------------------------------------------------------------
+      // Set the image attributes
+      // ------------------------------------------------------------------
+      dataset->putAndInsertUint16(DCM_Rows, sensor.getHeight());
+      dataset->putAndInsertUint16(DCM_Columns, sensor.getWidth());
+      dataset->putAndInsertUint16(DCM_SamplesPerPixel, 3);            // RGB
+      dataset->putAndInsertString(DCM_PhotometricInterpretation, "RGB");
+      dataset->putAndInsertUint16(DCM_BitsAllocated, 8);              // 8‑bit per channel
+      dataset->putAndInsertUint16(DCM_BitsStored, 8);
+      dataset->putAndInsertUint16(DCM_HighBit, 7);
+      dataset->putAndInsertUint16(DCM_PixelRepresentation, 0);       // unsigned
+      dataset->putAndInsertUint16(DCM_PlanarConfiguration, 0);        // interleaved RGB
+      dataset->putAndInsertString(DCM_NumberOfFrames, "1");
+
+
+      // ------------------------------------------------------------------
+      // Store the raw pixel data
+      // ------------------------------------------------------------------
+      std::cout << "Storing pixel data..." << std::endl;
+      dataset->putAndInsertUint8Array(
+        DCM_PixelData, 
+        reinterpret_cast<const std::uint8_t*>(
+          retrievedEntry.mutable_color_image()->data()
+        ), 
+        retrievedEntry.mutable_color_image()->size());
+        
+      // Write to disk
+      std::cout << "Writing to disk..." << std::endl;
+      fs::path dcm_current_image_path = image_folder / fmt::format("{:0>{}}.dcm", img_idx, 12);
+  
+      OFCondition cond = fileformat.saveFile(dcm_current_image_path.c_str(), EXS_LittleEndianExplicit);
+      if (!cond.good())
+      {
+          std::cerr << "Error saving DICOM file: " << cond.text() << std::endl;
+      }  
+    }
+
+    // Write D Image
+    {
+      DcmFileFormat fileformat;
+      DcmDataset *dataset = fileformat.getDataset();
+  
+      dataset->putAndInsertString(DCM_PatientID, patient_id);
+      dataset->putAndInsertString(DCM_PatientName, patient_name);
+  
+      dataset->putAndInsertString(DCM_SOPClassUID, UID_SecondaryCaptureImageStorage);
+      
+      // Create UID for this object
+      char sop_uid[100];
+      dcmGenerateUniqueIdentifier(sop_uid, SITE_INSTANCE_UID_ROOT);
+      
+      dataset->putAndInsertString(DCM_SOPInstanceUID, sop_uid);
+      dataset->putAndInsertString(DCM_SeriesInstanceUID, seriesUid);
+  
+      dataset->putAndInsertString(DCM_Modality, "OT");   // Other
+      dataset->putAndInsertString(DCM_ConversionType, "DV");
+  
+      dataset->putAndInsertString(DCM_StudyInstanceUID, studyInstanceUID);
   
   
-  // // Save image series 
-  // // Todo check if it is better to save them as individual files or as a series
-  // // todo modify this if we have multiple sensors
+      // ------------------------------------------------------------------
+      // Set the image attributes
+      // ------------------------------------------------------------------
+      dataset->putAndInsertUint16(DCM_Rows, sensor.getHeight());
+      dataset->putAndInsertUint16(DCM_Columns, sensor.getWidth());
+      dataset->putAndInsertUint16(DCM_SamplesPerPixel, 1);            // Depth
+      dataset->putAndInsertString(DCM_PhotometricInterpretation, "MONOCHROME2");
 
+      if (retrievedEntry.depth_dtype() == CV_16UC1) {
+        dataset->putAndInsertUint16(DCM_BitsAllocated, 16);
+        dataset->putAndInsertUint16(DCM_BitsStored, 8);  // TODO check if the alignment etc are correct
+        dataset->putAndInsertUint16(DCM_HighBit, 7);
+        dataset->putAndInsertUint16(DCM_PixelRepresentation, 0);       // unsigned
 
+        dataset->putAndInsertUint16Array(
+          DCM_PixelData,
+          reinterpret_cast<const std::uint16_t*>(
+            retrievedEntry.mutable_depth_image()->data()
+          ), 
+          retrievedEntry.mutable_depth_image()->size()
+        );
+      } else if (retrievedEntry.depth_dtype() == CV_32FC1)
+      {
+        dataset->putAndInsertUint16(DCM_BitsAllocated, 32);
+        dataset->putAndInsertUint16(DCM_BitsStored, 32);
+        dataset->putAndInsertUint16(DCM_HighBit, 31);
+        dataset->putAndInsertUint16(DCM_PixelRepresentation, 0);       // unsigned 
 
-  // auto cols = get<0>(dense_sensor_resolution_);
-  // auto rows = get<1>(dense_sensor_resolution_);
-  // uint8_t channels = 3;
-
-  // // Create a new image data buffer
-  // std::vector<u_int8_t> buf_color_imgs;
-
-  // // Allocate enough memory for all images
-  // buf_color_imgs.reserve(dense_data_count_ * rows *  cols * channels);
-
-  // // Add every image
-  // for (std::size_t i = 0; i < dense_data_count_; i++)
-  // {
-  //   // Retrive the color image
-  //   auto img = getImageFromId(i);
-
-  //   // Add every pixel
-  //   for (int r_id = 0; r_id < rows; r_id++)
-  //   {
-  //     for (int c_id = 0; c_id < cols; c_id++)
-  //     {
-  //       auto pixel = img[r_id][c_id];
-  //       buf_color_imgs.insert(buf_color_imgs.end(),pixel.begin(),pixel.end());
-  //     }
-  //   }
-  // }
-
-  // std::string seriesUID, studyUID;
-
-  // // ------------------------------------------------------------------
-  // // 1. Create a DICOM dataset
-  // // ------------------------------------------------------------------
-  // std::cout << "Creating dataset" << std::endl;
-  // DcmFileFormat fileformat;
-  // DcmDataset *dataset = fileformat.getDataset();
-
-  // // ------------------------------------------------------------------
-  // // 2. Fill in patient / study / series meta information
-  // //    (for a minimal example we only set a few attributes)
-  // // ------------------------------------------------------------------
-  // std::cout << "Add metadata" << std::endl;
-  // dataset->putAndInsertString(DCM_PatientID, "0000");
-  // dataset->putAndInsertString(DCM_PatientName, "Doe^John");
-
-  // char uid[100];
-  // dataset->putAndInsertString(DCM_SOPClassUID, UID_SecondaryCaptureImageStorage);
-  // dataset->putAndInsertString(DCM_SOPInstanceUID, dcmGenerateUniqueIdentifier(uid, SITE_INSTANCE_UID_ROOT));
-  // char seriesUid[100];
-  // dcmGenerateUniqueIdentifier(seriesUid);
-  // dataset->putAndInsertString(DCM_SeriesInstanceUID, seriesUid);
-
-  // dataset->putAndInsertString(DCM_Modality, "OT");   // Other
-  // dataset->putAndInsertString(DCM_ConversionType, "DV");
-
-  // char studyInstanceUID[100];
-  // dcmGenerateUniqueIdentifier(studyInstanceUID);
-  // dataset->putAndInsertString(DCM_StudyInstanceUID, studyInstanceUID);
-
-
-  // // ------------------------------------------------------------------
-  // // 3. Set the image attributes
-  // // ------------------------------------------------------------------
-  // std::cout << "Setting image attributes" << std::endl;
-  // dataset->putAndInsertUint16(DCM_Rows, rows);
-  // dataset->putAndInsertUint16(DCM_Columns, cols);
-  // dataset->putAndInsertUint16(DCM_SamplesPerPixel, 3);            // RGB
-  // dataset->putAndInsertString(DCM_PhotometricInterpretation, "RGB");
-  // dataset->putAndInsertUint16(DCM_BitsAllocated, 8);              // 8‑bit per channel
-  // dataset->putAndInsertUint16(DCM_BitsStored, 8);
-  // dataset->putAndInsertUint16(DCM_HighBit, 7);
-  // dataset->putAndInsertUint16(DCM_PixelRepresentation, 0);       // unsigned
-  // dataset->putAndInsertUint16(DCM_PlanarConfiguration, 0);        // interleaved RGB
-  // dataset->putAndInsertString(DCM_NumberOfFrames, "2");
-
-
-  // // ------------------------------------------------------------------
-  // // 4. Store the raw pixel data
-  // // ------------------------------------------------------------------
-  // std::cout << "Storing pixel data..." << std::endl;
-
-  // // 4a. Attach the data directly as a DcmPixelItem
-  // dataset->putAndInsertUint8Array(DCM_PixelData, &buf_color_imgs[0], static_cast<Uint32>(buf_color_imgs.size()));
-
-  // // ------------------------------------------------------------------
-  // // 5. Write to disk
-  // // ------------------------------------------------------------------
-  // std::cout << "Writing to disk..." << std::endl;
-
-  // OFCondition cond = fileformat.saveFile(folder_path + "/dicom.dcm", EXS_LittleEndianExplicit);
-  // if (!cond.good())
-  // {
-  //     std::cerr << "Error saving DICOM file: " << cond.text() << std::endl;
-  // }  
+        dataset->putAndInsertFloat32Array(
+          DCM_FloatPixelData,
+          reinterpret_cast<const float*>(
+            retrievedEntry.mutable_depth_image()->data()
+          ), 
+          retrievedEntry.mutable_depth_image()->size());
+      } else {
+        std::runtime_error("Unsupported depth data type");
+      }
+  
+        
+      // Write to disk
+      std::cout << "Writing to disk..." << std::endl;
+      fs::path dcm_current_image_path = image_folder / fmt::format("{:0>{}}_depth.dcm", img_idx, 12);
+  
+      OFCondition cond = fileformat.saveFile(dcm_current_image_path.c_str(), EXS_LittleEndianExplicit);
+      if (!cond.good())
+      {
+          std::cerr << "Error saving DICOM file: " << cond.text() << std::endl;
+      }  
+    }
+    img_idx++;
+  }
 }
 
 void Inspection::loadMesh(const std::string & key, open3d::geometry::TriangleMesh & mesh)

@@ -67,6 +67,7 @@ https://eigen.tuxfamily.org/dox/unsupported/group__EulerAngles__Module.html
 #define DB_KEY_DENSE_DATA_PREFIX std::string("/data/dense/")
 
 using json = nlohmann::json;
+namespace fs = std::filesystem;
 
 namespace vinspect
 {
