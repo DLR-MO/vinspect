@@ -26,7 +26,7 @@ public:
   explicit SparseMesh(Inspection & inspection);
   const open3d::geometry::TriangleMesh & createMesh(
     const float point_size, const bool use_own_color, const int mean_min_max,
-    const int value_type_index = 0);
+    const int value_name_index = 0);
   void resetMesh();
 
 private:
@@ -40,13 +40,13 @@ private:
   int meshed_mean_min_max_;
   float meshed_point_radius_;
   bool meshed_use_own_color_;
-  int meshed_value_type_index_;
+  int meshed_value_name_index_;
   uint64_t meshed_sparse_data_count_;
   std::vector<double> normalized_value_array_;
   double meshed_min_value_;
   double meshed_max_value_;
   std::vector<uint64_t> appended_ids_;
-  std::vector<uint64_t> point_values_;
+  std::vector<double> point_values_;
   // Key: The placement order of the appended points: First gets 0, second gets 1 etc.
   // Value: ID of the point
   std::map<uint64_t, uint64_t> id_to_appended_index_;

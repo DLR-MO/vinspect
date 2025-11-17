@@ -5,6 +5,11 @@ project(vinspect)
 set(CMAKE_C_COMPILER "gcc-11")
 set(CMAKE_CXX_COMPILER "g++-11")
 
+# Build with release optimizations and debug symbols by default
+if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE RelWithDebug)
+endif()
+
 set(CMAKE_CXX_STANDARD 20)
 set(PYBIND11_FINDPYTHON ON)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/")
@@ -21,10 +26,28 @@ find_package(pybind11 REQUIRED)
 set_target_properties(pybind11::pybind11_headers PROPERTIES
   INTERFACE_INCLUDE_DIRECTORIES "/usr/include"
 )
-find_package(TBB REQUIRED)
+find_package(backward_ros REQUIRED)
+find_package(fmt REQUIRED)
+find_package(Git REQUIRED)
+find_package(nlohmann_json REQUIRED)
 find_package(Protobuf REQUIRED)
 find_package(rocksdb REQUIRED)
 find_package(DCMTK REQUIRED)
+find_package(TBB REQUIRED)
+
+# Make the git commit hash available in the code
+execute_process(
+  COMMAND git log -1 --format=%h
+  WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
+  OUTPUT_VARIABLE GIT_COMMIT_HASH
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
+if(GIT_COMMIT_HASH)
+  add_definitions(-DGIT_COMMIT_HASH=\"${GIT_COMMIT_HASH}\")
+else()
+  message(WARNING "Could not determine Git commit hash.")
+endif()
 
 protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS src/dense.proto)
 
@@ -46,17 +69,20 @@ include_directories(include)
 include_directories(${CMAKE_CURRENT_BINARY_DIR}) #ToDo probably better to have all .proto file in one folder and inlcude that instead of ${CMAKE_CURRENT_BINARY_DIR}
 include_directories(${OpenCV_INCLUDE_DIRS})
 include_directories(${DCMTK_INCLUDE_DIRS})
+include_directories(${fmt_INCLUDE_DIRS})
 set(SOURCES src/inspection.cpp src/utils.cpp src/sparse_mesh.cpp ${PROTO_SRCS} ${PROTO_HDRS})
 
 add_library(${PROJECT_NAME} SHARED ${SOURCES})
 
-target_link_libraries(${PROJECT_NAME} TBB::tbb OpenMP::OpenMP_CXX rocksdb ${PROTOBUF_LIBRARY} ${DCMTK_LIBRARIES})
+target_link_libraries(${PROJECT_NAME} TBB::tbb OpenMP::OpenMP_CXX rocksdb ${PROTOBUF_LIBRARY} ${DCMTK_LIBRARIES}  ${OpenCV_LIBS} ${fmt_LIBRARIES})
 
 ament_target_dependencies(${PROJECT_NAME}
   ament_cmake
   Open3D
   rocksdb
   DCMTK
+  nlohmann_json
+  fmt
 )
 
 pybind11_add_module(vinspect_py src/python_bindings.cpp)
@@ -66,8 +92,10 @@ ament_target_dependencies(vinspect_py PUBLIC
   Open3D
   rocksdb
   DCMTK
+  nlohmann_json
+  fmt
 )
-target_link_libraries(vinspect_py PUBLIC vinspect rocksdb ${PROTOBUF_LIBRARY} ${OpenCV_LIBS} ${DCMTK_LIBRARIES})
+target_link_libraries(vinspect_py PUBLIC vinspect rocksdb ${PROTOBUF_LIBRARY} ${OpenCV_LIBS} ${DCMTK_LIBRARIES} ${fmt_LIBRARIES})
 set_target_properties(vinspect_py PROPERTIES LINKER_LANGUAGE CXX)
 
 if(BUILD_TESTING)
@@ -99,12 +127,13 @@ install(
   DESTINATION lib/python3/dist-packages/${PROJECT_NAME}
 )
 
+ament_export_dependencies(fmt)
+ament_export_dependencies(nlohmann_json)
+ament_export_dependencies(Open3D)
 ament_export_dependencies(pybind11)
 ament_export_dependencies(Python3)
 ament_export_dependencies(TBB)
-ament_export_dependencies(Open3D)
 ament_export_libraries(rocksdb)
-ament_export_libraries(DCMTK)
 ament_export_libraries(${PROJECT_NAME})
 ament_export_include_directories(include)
 ament_export_include_directories(${CMAKE_CURRENT_BINARY_DIR}) #ToDo See line: 34
