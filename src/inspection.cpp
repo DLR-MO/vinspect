@@ -234,7 +234,6 @@ std::array<double, 6> Inspection::getDensePoseFromId(const int sample_id) const
   assert(retrievedEntry.entry_nr() == sample_id);
 
   auto pose = transformMatrixToPose(matrixFromFlatProtoArray<4, 4>(retrievedEntry.extrinsic_world_matrix()));
-  std::cout << pose[0] << " " << pose[1] << " " << pose[2] << std::endl;
   return pose;
 }
 
@@ -398,7 +397,7 @@ void Inspection::addImageImpl(
   // we can only integrate if we already received the intrinsic calibration for this sensor
   const auto intrinsics_it = intrinsic_.find(sensor_id);
   if (intrinsics_it == intrinsic_.end()) {
-    std::cout << "No intrinsic calibration available for sensor " << sensor_id
+    std::cerr << "No intrinsic calibration available for sensor " << sensor_id
               << " Will not integrate." << std::endl;
     return;
   }
@@ -479,9 +478,6 @@ void Inspection::addImageImpl(
       extrinsic_tens, depth_scale, depth_trunc);
 
   const std::array<double, 6> image_pose = transformMatrixToPose(extrinsic_world);
-  std::cout << image_pose[0] << " " << image_pose[1] << " " << image_pose[2] << std::endl;
-
-  std::cout << extrinsic_world << std::endl;
 
   {
     std::lock_guard<std::mutex> mtx_lock(mtx_);
