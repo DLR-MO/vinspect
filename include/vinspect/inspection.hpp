@@ -232,7 +232,6 @@ public:
   /**
    * Recreates the octrees. Useful if the inspection space should be adapted to the current data.
    */
-  void recreateOctrees();
   void reinitializeTSDF(double voxel_length);
 
   void clear();
@@ -347,6 +346,22 @@ private:
     const Eigen::Matrix4d & extrinsic_optical,
     const Eigen::Matrix4d & extrinsic_world,
     bool store_in_database = true);
+
+
+  /**
+  * Reconstructs the sparse representations (e.g. octrees) based on the
+  * current raw data in the DB.
+  */
+  void reconstructSparseFromDB();
+
+  /**
+   * Reconstructs the dense representations (e.g. TSDF) based on the
+   * current raw data in the DB. This is useful if we e.g. reparameterize the TSDF.
+   */
+  void reconstructDenseFromDB();
+
+  void clearDense(bool wipe_db = true);
+  void clearSparse(bool wipe_db = true); 
 
   std::vector<SparseValueInfo> sparse_value_infos_;
   std::vector<DenseSensor> dense_sensors_;

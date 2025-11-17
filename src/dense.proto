@@ -9,4 +9,5 @@ message Dense{
     int32 depth_dtype = 6;
     repeated double extrinsic_optical_matrix = 7;
     repeated double extrinsic_world_matrix = 8;
+    repeated double intrinsics_matrix = 9;
 }

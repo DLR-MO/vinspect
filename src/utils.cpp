@@ -164,7 +164,8 @@ std::string serializedStructForDenseEntry(
   const cv::Mat & depth_img,
   double depth_trunc,
   const Eigen::Matrix4d & extrinsic_optical,
-  const Eigen::Matrix4d & extrinsic_world
+  const Eigen::Matrix4d & extrinsic_world,
+  const open3d::camera::PinholeCameraIntrinsic & intrinsics
 )
 {
   //Fill the Protobuf object
@@ -187,21 +188,13 @@ std::string serializedStructForDenseEntry(
   denseEntry.set_depth_image(depth_img.data,
       depth_img.cols * depth_img.rows * depth_img.elemSize());
 
-  return denseEntry.SerializeAsString();
-}
+  auto * intrinsics_field = denseEntry.mutable_intrinsics_matrix();
+  intrinsics_field->Add(
+    intrinsics.intrinsic_matrix_.reshaped().begin(),
+    intrinsics.intrinsic_matrix_.reshaped().end()
+  );
 
-Eigen::Matrix4d matrixFromFlatProtoArray(const google::protobuf::RepeatedField<double> & flat_array)
-{
-  if (flat_array.size() != 16) {
-    throw std::invalid_argument("Extrinsic optical matrix must have exactly 16 elements");
-  }
-  Eigen::Matrix4d matrix;
-  for (int i = 0; i < 16; ++i) {
-    int row = i / 4;
-    int col = i % 4;
-    matrix(col, row) = flat_array[i];
-  }
-  return matrix;
+  return denseEntry.SerializeAsString();
 }
 
 open3d::core::Device selectDevice()

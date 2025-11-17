@@ -46,86 +46,17 @@ Inspection::Inspection(const std::string & file_path)
 
   // Make common initializations for both dense and sparse sensors
   setupSensors();
-
-  recreateOctrees();
-
+  
   loadMesh(DB_KEY_REFERENCE_MESH, reference_mesh_);
-
+  
   std::cout << "Processing measurements..." << std::endl;
-
-  // Iterate over sparse measurements
+  
+  // Build application state from raw data in DB
   if (getSparseUsage()) {
-    // Create an iterator
-    auto it = std::unique_ptr<rocksdb::Iterator>(db_->NewIterator(rocksdb::ReadOptions()));
-
-    // Iterate over keys with the specified prefix using a for loop
-    for (it->Seek(DB_KEY_SPARSE_DATA_PREFIX);
-      it->Valid() && it->key().starts_with(DB_KEY_SPARSE_DATA_PREFIX); it->Next())
-    {
-      json sample = json::parse(it->value().ToStringView());
-
-      Eigen::Vector3d user_color(
-        sample["user_color"]["r"],
-        sample["user_color"]["g"],
-        sample["user_color"]["b"]
-      );
-
-      addSparseMeasurementImpl(
-        sample["timestamp"],
-        sample["sensor_id"],
-        sample["position"],
-        sample["orientation"],
-        sample["value"],
-        user_color,
-        true,
-        false
-      );
-    }
+    reconstructSparseFromDB();
   }
-  // Iterate over dense measurements
   if(getDenseUsage()) {
-    // Create an iterator
-    auto it = std::unique_ptr<rocksdb::Iterator>(db_->NewIterator(rocksdb::ReadOptions()));
-
-    // Iterate over keys with the specified prefix using a for loop
-    for (it->Seek(DB_KEY_DENSE_DATA_PREFIX);
-      it->Valid() && it->key().starts_with(DB_KEY_DENSE_DATA_PREFIX); it->Next())
-    {
-      auto sample = it->value().ToString();
-
-      Dense retrievedEntry;
-      if (!retrievedEntry.ParseFromString(sample)) {
-        throw std::runtime_error("Failed to parse dense data");
-      }
-
-      // Get sensor information
-      auto sensor = getDenseSensor(retrievedEntry.sensor_id());
-
-      // Zero-copy the data to OpenCV Mat objects
-      // We need to make sure that the original object outlives these
-      // references, which is the case here, but be careful when you
-      // modify something in addImageImpl or here
-      const cv::Mat color_img(
-        sensor.getHeight(),
-        sensor.getWidth(),
-        CV_8UC3,
-        static_cast<void *>(retrievedEntry.mutable_color_image()->data()));
-      const cv::Mat depth_img(
-        sensor.getHeight(),
-        sensor.getWidth(),
-        retrievedEntry.depth_dtype(),
-        static_cast<void *>(retrievedEntry.mutable_depth_image()->data()));
-
-      addImageImpl(
-        color_img,
-        depth_img,
-        retrievedEntry.depth_trunc(),
-        retrievedEntry.sensor_id(),
-        matrixFromFlatProtoArray(retrievedEntry.extrinsic_optical_matrix()),
-        matrixFromFlatProtoArray(retrievedEntry.extrinsic_optical_matrix()),
-        false
-      );
-    }
+    reinitializeTSDF(0.01); // TODO Store the original value
   }
   std::cout << "Data loaded." << std::endl;
 }
@@ -157,8 +88,8 @@ Inspection::Inspection(
   // Make common initializations for both dense and sparse sensors
   setupSensors();
 
-  // Apply workspace boundaries
-  recreateOctrees();
+  // Reset/Init inspection state
+  clear();
 
   // Save static metadata that is unlikely to change in the DB
   if (!saveMetaData()) {
@@ -302,7 +233,9 @@ std::array<double, 6> Inspection::getDensePoseFromId(const int sample_id) const
 
   assert(retrievedEntry.entry_nr() == sample_id);
 
-  return transformMatrixToPose(matrixFromFlatProtoArray(retrievedEntry.extrinsic_world_matrix()));
+  auto pose = transformMatrixToPose(matrixFromFlatProtoArray<4, 4>(retrievedEntry.extrinsic_world_matrix()));
+  std::cout << pose[0] << " " << pose[1] << " " << pose[2] << std::endl;
+  return pose;
 }
 
 std::vector<std::array<double, 6>> Inspection::getMultiDensePoses(const int percentage) const
@@ -323,7 +256,7 @@ std::vector<std::array<double, 6>> Inspection::getMultiDensePoses(const int perc
       throw std::runtime_error("Error parsing dense sample");
     }
 
-    all_poses.push_back(transformMatrixToPose(matrixFromFlatProtoArray(
+    all_poses.push_back(transformMatrixToPose(matrixFromFlatProtoArray<4, 4>(
         retrievedEntry.extrinsic_world_matrix())));
   }
 
@@ -463,23 +396,24 @@ void Inspection::addImageImpl(
   bool store_in_database)
 {
   // we can only integrate if we already received the intrinsic calibration for this sensor
-  auto intrinsics = intrinsic_.find(sensor_id);
-  if (intrinsics == intrinsic_.end()) {
+  const auto intrinsics_it = intrinsic_.find(sensor_id);
+  if (intrinsics_it == intrinsic_.end()) {
     std::cout << "No intrinsic calibration available for sensor " << sensor_id
               << " Will not integrate." << std::endl;
     return;
   }
+  const auto & intrinsics = intrinsics_it->second;
 
   // Get sensor
-  auto sensor = getDenseSensor(sensor_id);
+  const auto sensor = getDenseSensor(sensor_id);
   assert(color_image.rows == sensor.getHeight());
   assert(color_image.cols == sensor.getWidth());
-  double depth_scale = sensor.getDepthScale();
+  const double depth_scale = sensor.getDepthScale();
 
   // Convert image to open3d representation
   assert(color_image.type() == CV_8UC3);
   // This is zero-copy, so make sure the original Mat outlives this object
-  open3d::core::Tensor color_image_o3d_view(
+  const open3d::core::Tensor color_image_o3d_view(
     color_image.data,
     open3d::core::UInt8,
     {color_image.rows, color_image.cols, color_image.channels()},
@@ -500,12 +434,12 @@ void Inspection::addImageImpl(
   // Convert depth to open3d representation
   // Map types
   assert(depth_image.type() == CV_16UC1 or depth_image.type() == CV_32FC1);
-  std::map<int, open3d::core::Dtype> depth_type_map = {
+  const std::map<int, open3d::core::Dtype> depth_type_map = {
     {CV_32FC1, open3d::core::Float32},
     {CV_16UC1, open3d::core::UInt16},
   };
   // This is zero-copy, so make sure the original Mat outlives this object
-  open3d::core::Tensor depth_image_o3_view(
+  const open3d::core::Tensor depth_image_o3_view(
     depth_image.data,
     depth_type_map.at(depth_image.type()),
     {depth_image.rows, depth_image.cols, depth_image.channels()},
@@ -515,17 +449,17 @@ void Inspection::addImageImpl(
   // This copies the data to the GPU if needed
   // If we run on the CPU, this is also zero copy
   // Make sure the original Mat outlives this object
-  auto o3d_depth_image = depth_image_o3_view.To(o3d_device_);
+  const auto o3d_depth_image = depth_image_o3_view.To(o3d_device_);
 
-  auto focal_length = intrinsic_[sensor_id].GetFocalLength();
-  auto principal_point = intrinsic_[sensor_id].GetPrincipalPoint();
+  const auto focal_length = intrinsics.GetFocalLength();
+  const auto principal_point = intrinsics.GetPrincipalPoint();
 
-  open3d::core::Tensor intrinsic_tens = open3d::core::Tensor::Init<double>(
+  const open3d::core::Tensor intrinsic_tens = open3d::core::Tensor::Init<double>(
     {{focal_length.first, 0, principal_point.first},
       {0, focal_length.second, principal_point.second},
       {0, 0, 1}});
 
-  open3d::core::Tensor extrinsic_tens =
+  const open3d::core::Tensor extrinsic_tens =
     open3d::core::eigen_converter::EigenMatrixToTensor(extrinsic_optical);
 
   open3d::core::Tensor frustum_block_coords;
@@ -540,20 +474,24 @@ void Inspection::addImageImpl(
     return;
   }
 
-  // todo should use other integrate method which uses different intrinsics for depth and color images
+  // todo ensure depth maps are registered before hand (only one camera info needed in that case)
   voxel_grid_.Integrate(frustum_block_coords, o3d_depth_image, o3d_color_image, intrinsic_tens,
       extrinsic_tens, depth_scale, depth_trunc);
 
-  std::array<double, 6> image_pose = transformMatrixToPose(extrinsic_world);
+  const std::array<double, 6> image_pose = transformMatrixToPose(extrinsic_world);
+  std::cout << image_pose[0] << " " << image_pose[1] << " " << image_pose[2] << std::endl;
+
+  std::cout << extrinsic_world << std::endl;
 
   {
     std::lock_guard<std::mutex> mtx_lock(mtx_);
     dense_posetree_.Insert(dense_data_count_, image_pose, false);
     dense_pose_.push_back(image_pose);
 
+
     // save dense data to database
     if (store_in_database) {
-      std::string key = DB_KEY_DENSE_DATA_PREFIX + fmt::format("{:0>{}}", dense_data_count_,
+      const std::string key = DB_KEY_DENSE_DATA_PREFIX + fmt::format("{:0>{}}", dense_data_count_,
           DB_NUMBER_DIGITS_FOR_IDX);
       std::string value = serializedStructForDenseEntry(
         dense_data_count_,
@@ -562,11 +500,106 @@ void Inspection::addImageImpl(
         depth_image,
         depth_trunc,
         extrinsic_optical,
-        extrinsic_world);  // todo store intrinsics too
+        extrinsic_world,
+        intrinsics
+      );
       db_->Put(rocksdb::WriteOptions(), key, value);
     }
 
     dense_data_count_++;
+  }
+}
+
+void Inspection::reconstructSparseFromDB()
+{
+  // Reset non-persistent state so we can reconstruct it from the DB
+  clearSparse(false);
+
+  // Create an iterator
+  auto it = std::unique_ptr<rocksdb::Iterator>(db_->NewIterator(rocksdb::ReadOptions()));
+
+  // Iterate over keys with the specified prefix using a for loop
+  for (it->Seek(DB_KEY_SPARSE_DATA_PREFIX);
+    it->Valid() && it->key().starts_with(DB_KEY_SPARSE_DATA_PREFIX); it->Next())
+  {
+    json sample = json::parse(it->value().ToStringView());
+
+    Eigen::Vector3d user_color(
+      sample["user_color"]["r"],
+      sample["user_color"]["g"],
+      sample["user_color"]["b"]
+    );
+
+    addSparseMeasurementImpl(
+      sample["timestamp"],
+      sample["sensor_id"],
+      sample["position"],
+      sample["orientation"],
+      sample["value"],
+      user_color,
+      true,
+      false
+    );
+  }
+}
+
+void Inspection::reconstructDenseFromDB()
+{
+  // Clear local state
+  clearDense(false);
+
+  // Create an iterator
+  auto it = std::unique_ptr<rocksdb::Iterator>(db_->NewIterator(rocksdb::ReadOptions()));
+
+  // Iterate over keys with the specified prefix using a for loop
+  for (it->Seek(DB_KEY_DENSE_DATA_PREFIX);
+    it->Valid() && it->key().starts_with(DB_KEY_DENSE_DATA_PREFIX); it->Next())
+  {
+    const auto sample = it->value().ToString();
+
+    Dense retrievedEntry;
+    if (!retrievedEntry.ParseFromString(sample)) {
+      throw std::runtime_error("Failed to parse dense data");
+    }
+
+    // Get sensor information
+    const auto sensor = getDenseSensor(retrievedEntry.sensor_id());
+
+    // Zero-copy the data to OpenCV Mat objects
+    // We need to make sure that the original object outlives these
+    // references, which is the case here, but be careful when you
+    // modify something in addImageImpl or here
+    const cv::Mat color_img(
+      sensor.getHeight(),
+      sensor.getWidth(),
+      CV_8UC3,
+      static_cast<void *>(retrievedEntry.mutable_color_image()->data()));
+    const cv::Mat depth_img(
+      sensor.getHeight(),
+      sensor.getWidth(),
+      retrievedEntry.depth_dtype(),
+      static_cast<void *>(retrievedEntry.mutable_depth_image()->data()));
+
+    // Add intrinsics for sensor
+    setIntrinsic(
+      open3d::camera::PinholeCameraIntrinsic(
+        sensor.getWidth(),
+        sensor.getHeight(),
+        matrixFromFlatProtoArray<3, 3>(retrievedEntry.intrinsics_matrix())
+      ),
+      retrievedEntry.sensor_id()
+    );
+
+    // "Observe" the measurement again to integrate it into e.g. the TSDF
+    addImageImpl(
+      color_img,
+      depth_img,
+      retrievedEntry.depth_trunc(),
+      retrievedEntry.sensor_id(),
+      matrixFromFlatProtoArray<4, 4>(retrievedEntry.extrinsic_optical_matrix()),
+      matrixFromFlatProtoArray<4, 4>(retrievedEntry.extrinsic_world_matrix()),
+      false
+    );
   }
 }
 
@@ -589,56 +622,76 @@ void Inspection::saveDenseReconstruction(std::string filename)
   open3d::io::WriteTriangleMesh(filename, *mesh, true);
 }
 
-void Inspection::recreateOctrees()
-{
-  if (getSparseUsage()) {
-    sparse_octree_ = OrthoTree::OctreePointC(sparse_position_, OCTREE_DEPTH, inspection_space_3d_);
-  }
-  if (getDenseUsage()) {
-    dense_posetree_ = OrthoTree::TreePointPoseND<6, {0, 0, 0, 1, 1, 1}, std::ratio<1, 2>, double>();
-    dense_posetree_.Create(
-      dense_posetree_, dense_pose_, OCTREE_DEPTH, inspection_space_6d_,
-      MAX_POSES_IN_LEAF);
-  }
-}
-
 void Inspection::reinitializeTSDF(double voxel_length)
 {
   voxel_grid_ =
     open3d::t::geometry::VoxelBlockGrid({"tsdf", "weight", "color"},
       {open3d::core::Dtype::Float32, open3d::core::Dtype::UInt16, open3d::core::Dtype::UInt16},
       {{1}, {1}, {3}}, voxel_length, 16, 50000, o3d_device_);   //todo make block count a parameter
+  
+  reconstructDenseFromDB();
 }
 
 void Inspection::clear()
 {
-  // delete dynamic database keys
-  db_->DeleteRange(rocksdb::WriteOptions(), DB_KEY_SPARSE_DATA_PREFIX,
-      DB_KEY_SPARSE_DATA_PREFIX + '\xFF');
-  db_->DeleteRange(rocksdb::WriteOptions(), DB_KEY_DENSE_DATA_PREFIX,
-      DB_KEY_DENSE_DATA_PREFIX + '\xFF');
+  clearSparse(true);
+  clearDense(true);
+}
 
-  // reset the inspection
+void Inspection::clearSparse(bool wipe_db)
+{
+  if (!getSparseUsage()) {
+    return;
+  }
+
+  // Clear persistent storage
+  if(wipe_db) 
+  {
+    db_->DeleteRange(rocksdb::WriteOptions(), DB_KEY_SPARSE_DATA_PREFIX,
+      DB_KEY_SPARSE_DATA_PREFIX + '\xFF');
+  }
+
+  // Clear non persistent storage
   sparse_data_count_ = 0;
-  dense_data_count_ = 0;
   sparse_octree_.Clear();
   sparse_timestamp_.clear();
   sparse_position_.clear();
   sparse_orientation_.clear();
   sparse_value_.clear();
   sparse_user_color_.clear();
-  if (getSparseUsage()) {
-    auto num_sparse_types = sparse_value_infos_.size();
-    sparse_min_values_ = std::vector<double>(num_sparse_types, std::numeric_limits<double>::max());
-    sparse_max_values_ = std::vector<double>(num_sparse_types,
-        std::numeric_limits<double>::lowest());
+  auto num_sparse_types = sparse_value_infos_.size();
+  sparse_min_values_ = std::vector<double>(num_sparse_types, std::numeric_limits<double>::max());
+  sparse_max_values_ = std::vector<double>(num_sparse_types,
+      std::numeric_limits<double>::lowest());
+  
+  // Recreate octree
+  sparse_octree_ = OrthoTree::OctreePointC(sparse_position_, OCTREE_DEPTH, inspection_space_3d_);
+}
+
+void Inspection::clearDense(bool wipe_db) 
+{
+  if (!getDenseUsage()) {
+    return;
   }
 
+  // Clear persistent storage
+  if(wipe_db) 
+  {
+    db_->DeleteRange(rocksdb::WriteOptions(), DB_KEY_DENSE_DATA_PREFIX,
+    DB_KEY_DENSE_DATA_PREFIX + '\xFF');
+  }
+
+  // Clear non persistent storage
+  dense_data_count_ = 0;
   dense_timestamp_.clear();
   dense_pose_.clear();
   dense_orientation_.clear();
 
-  recreateOctrees();
+  // Recreate Octree
+  dense_posetree_ = OrthoTree::TreePointPoseND<6, {0, 0, 0, 1, 1, 1}, std::ratio<1, 2>, double>();
+  dense_posetree_.Create(
+    dense_posetree_, dense_pose_, OCTREE_DEPTH, inspection_space_6d_,
+    MAX_POSES_IN_LEAF);
 }
 
 // todo could also add a field to store an arbitrary string as a note or comment

@@ -45,7 +45,7 @@ bool isPointInSpace(
   const OrthoTree::BoundingBox3D * inspection_space, const std::array<double, 3> position);
 
   /**
-   * Extracts the pose from an 4D extrisic matrix
+   * Extracts the pose from an 4D extrinsic matrix
    * @param extrinsic_matrix extrinsic matrix
    * @return pose of with orientation as euler angles
    */
@@ -53,8 +53,22 @@ std::array<double, 6> transformMatrixToPose(const Eigen::Matrix4d & extrinsic_ma
 std::array<double, 6> quatToEulerPose(const std::array<double, 7> quat_pose);
 std::array<double, 7> eulerToQuatPose(const std::array<double, 6> euler_pose);
 
-Eigen::Matrix4d matrixFromFlatProtoArray(
-  const google::protobuf::RepeatedField<double> & flat_array);
+template<std::size_t N, std::size_t M>
+inline Eigen::Matrix<double, N, M> matrixFromFlatProtoArray(const google::protobuf::RepeatedField<double> & flat_array)
+{
+  const double n = N*M;
+  if (flat_array.size() != n) {
+    throw std::invalid_argument(
+      fmt::format(
+        "Buffer must have exactly {} elements", n
+      )
+    );
+  }
+  const Eigen::Matrix<double, N, M, Eigen::ColMajor> matrix(
+    flat_array.data()
+  );
+  return matrix;
+}
 
   /**
    * Serializes a filled protobuf object.
@@ -72,7 +86,8 @@ std::string serializedStructForDenseEntry(
   const cv::Mat & depth_img,
   double depth_trunc,
   const Eigen::Matrix4d & extrinsic_optical,
-  const Eigen::Matrix4d & extrinsic_world
+  const Eigen::Matrix4d & extrinsic_world,
+  const open3d::camera::PinholeCameraIntrinsic & intrinsics
 );
 
 inline Eigen::Vector3d cast(const std::array<double, 3> & arr)
