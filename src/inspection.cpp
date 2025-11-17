@@ -601,10 +601,10 @@ void Inspection::reconstructDenseFromDB()
 
 std::shared_ptr<open3d::geometry::TriangleMesh> Inspection::extractDenseReconstruction()
 {
-  // todo beware of copying the returned mesh
   // TODO it should probably be also a parameter how often we want to see one point
-  open3d::geometry::TriangleMesh mesh_d = voxel_grid_.ExtractTriangleMesh(10.0f).ToLegacy();
-  std::shared_ptr<open3d::geometry::TriangleMesh> mesh = std::make_shared<open3d::geometry::TriangleMesh>(mesh_d);
+  std::shared_ptr<open3d::geometry::TriangleMesh> mesh = std::make_shared<open3d::geometry::TriangleMesh>(
+    voxel_grid_.ExtractTriangleMesh(10.0f).ToLegacy()
+  );
 
   // todo maybe give some warning if the whole mesh is cropped to 0 triangles
   std::shared_ptr<open3d::geometry::TriangleMesh> cropped_mesh = mesh->Crop(crop_box_);
