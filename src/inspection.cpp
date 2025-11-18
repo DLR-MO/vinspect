@@ -772,25 +772,27 @@ void Inspection::saveDiconde(const std::string & folder_path)
 
 
   // Create global metadata    // TODO rename to DICONDE names
-  auto patient_name = "Doe^John";
+  auto patient_name = "Doe^John"; // TODO make parameter
   auto patient_id = "0000";
-  std::string seriesUID, studyUID;
 
-  // TODO recheck what these are and if we use them correctly
-  char seriesUid[100], studyInstanceUID[100];
-  dcmGenerateUniqueIdentifier(seriesUid);
+  char studyInstanceUID[100];
   dcmGenerateUniqueIdentifier(studyInstanceUID);
 
+  // Dense export
+  {
+    // TODO maybe a series for each sensor
+    char imageSeriesUid[100], depthSeriesUid[100];
+    dcmGenerateUniqueIdentifier(imageSeriesUid);
+    dcmGenerateUniqueIdentifier(depthSeriesUid);
 
   // Go through all images
-  // TODO reduce the code duplication for this operation
   std::size_t img_idx = 0;
   auto it = std::unique_ptr<rocksdb::Iterator>(db_->NewIterator(rocksdb::ReadOptions()));
   for (it->Seek(DB_KEY_DENSE_DATA_PREFIX);
     it->Valid() && it->key().starts_with(DB_KEY_DENSE_DATA_PREFIX); it->Next())
   {
+      // Decode data
     const auto sample = it->value().ToString();
-
     Dense retrievedEntry;
     if (!retrievedEntry.ParseFromString(sample)) {
       throw std::runtime_error("Failed to parse dense data");
@@ -814,7 +816,8 @@ void Inspection::saveDiconde(const std::string & folder_path)
       dcmGenerateUniqueIdentifier(sop_uid, SITE_INSTANCE_UID_ROOT);
       
       dataset->putAndInsertString(DCM_SOPInstanceUID, sop_uid);
-      dataset->putAndInsertString(DCM_SeriesInstanceUID, seriesUid);
+        dataset->putAndInsertString(DCM_SeriesInstanceUID, imageSeriesUid);
+        dataset->putAndInsertString(DCM_SeriesDescription, "Dense RGB Image");
 
       dataset->putAndInsertString(DCM_Modality, "OT");   // Other
       dataset->putAndInsertString(DCM_ConversionType, "DV");
@@ -835,12 +838,13 @@ void Inspection::saveDiconde(const std::string & folder_path)
       dataset->putAndInsertUint16(DCM_PixelRepresentation, 0);       // unsigned
       dataset->putAndInsertUint16(DCM_PlanarConfiguration, 0);        // interleaved RGB
       dataset->putAndInsertString(DCM_NumberOfFrames, "1");
+        dataset->putAndInsertUint16(DCM_SmallestImagePixelValue, 0);
+        dataset->putAndInsertUint16(DCM_LargestImagePixelValue, 255);
 
 
       // ------------------------------------------------------------------
       // Store the raw pixel data
       // ------------------------------------------------------------------
-      std::cout << "Storing pixel data..." << std::endl;
       dataset->putAndInsertUint8Array(
         DCM_PixelData, 
         reinterpret_cast<const std::uint8_t*>(
@@ -849,7 +853,6 @@ void Inspection::saveDiconde(const std::string & folder_path)
         retrievedEntry.mutable_color_image()->size());
         
       // Write to disk
-      std::cout << "Writing to disk..." << std::endl;
       fs::path dcm_current_image_path = image_folder / fmt::format("{:0>{}}.dcm", img_idx, 12);
   
       OFCondition cond = fileformat.saveFile(dcm_current_image_path.c_str(), EXS_LittleEndianExplicit);
@@ -859,7 +862,7 @@ void Inspection::saveDiconde(const std::string & folder_path)
       }  
     }
 
-    // Write D Image
+      // Write Depth Image
     {
       DcmFileFormat fileformat;
       DcmDataset *dataset = fileformat.getDataset();
@@ -874,7 +877,8 @@ void Inspection::saveDiconde(const std::string & folder_path)
       dcmGenerateUniqueIdentifier(sop_uid, SITE_INSTANCE_UID_ROOT);
       
       dataset->putAndInsertString(DCM_SOPInstanceUID, sop_uid);
-      dataset->putAndInsertString(DCM_SeriesInstanceUID, seriesUid);
+        dataset->putAndInsertString(DCM_SeriesInstanceUID, depthSeriesUid);
+        dataset->putAndInsertString(DCM_SeriesDescription, "Dense Depth Image");
   
       dataset->putAndInsertString(DCM_Modality, "OT");   // Other
       dataset->putAndInsertString(DCM_ConversionType, "DV");
@@ -889,12 +893,13 @@ void Inspection::saveDiconde(const std::string & folder_path)
       dataset->putAndInsertUint16(DCM_Columns, sensor.getWidth());
       dataset->putAndInsertUint16(DCM_SamplesPerPixel, 1);            // Depth
       dataset->putAndInsertString(DCM_PhotometricInterpretation, "MONOCHROME2");
+        dataset->putAndInsertUint16(DCM_SmallestImagePixelValue, 0);
+        dataset->putAndInsertUint16(DCM_PixelRepresentation, 0);  // unsigned
 
       if (retrievedEntry.depth_dtype() == CV_16UC1) {
         dataset->putAndInsertUint16(DCM_BitsAllocated, 16);
-        dataset->putAndInsertUint16(DCM_BitsStored, 8);  // TODO check if the alignment etc are correct
-        dataset->putAndInsertUint16(DCM_HighBit, 7);
-        dataset->putAndInsertUint16(DCM_PixelRepresentation, 0);       // unsigned
+          dataset->putAndInsertUint16(DCM_BitsStored, 16);  // TODO check if the alignment etc are correct
+          dataset->putAndInsertUint16(DCM_HighBit, 15);
 
         dataset->putAndInsertUint16Array(
           DCM_PixelData,
@@ -908,7 +913,6 @@ void Inspection::saveDiconde(const std::string & folder_path)
         dataset->putAndInsertUint16(DCM_BitsAllocated, 32);
         dataset->putAndInsertUint16(DCM_BitsStored, 32);
         dataset->putAndInsertUint16(DCM_HighBit, 31);
-        dataset->putAndInsertUint16(DCM_PixelRepresentation, 0);       // unsigned 
 
         dataset->putAndInsertFloat32Array(
           DCM_FloatPixelData,
@@ -922,7 +926,6 @@ void Inspection::saveDiconde(const std::string & folder_path)
   
         
       // Write to disk
-      std::cout << "Writing to disk..." << std::endl;
       fs::path dcm_current_image_path = image_folder / fmt::format("{:0>{}}_depth.dcm", img_idx, 12);
   
       OFCondition cond = fileformat.saveFile(dcm_current_image_path.c_str(), EXS_LittleEndianExplicit);
@@ -933,6 +936,9 @@ void Inspection::saveDiconde(const std::string & folder_path)
     }
     img_idx++;
   }
+  }
+
+
 }
 
 void Inspection::loadMesh(const std::string & key, open3d::geometry::TriangleMesh & mesh)
