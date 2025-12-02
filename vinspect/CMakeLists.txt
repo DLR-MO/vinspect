@@ -15,6 +15,7 @@ set(PYBIND11_FINDPYTHON ON)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/")
 set(Open3D_ROOT /usr/)
 
+# TODO this is not available without ROS...
 find_package(ament_cmake REQUIRED) 
 find_package(ament_cmake_python REQUIRED)
 find_package(Open3D REQUIRED)

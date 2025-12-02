@@ -12,6 +12,16 @@
   <license>MIT</license>
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
+  <depend>librocksdb-dev</depend>
+  <depend>libopencv-dev</depend>
+  <depend>nlohmann-json-dev</depend>
+  <depend>fmt</depend>
+  <depend>pybind11-dev</depend>
+  <depend>git</depend>
+  <depend>backward_ros</depend>
+  <depend>protobuf</depend>
+  <depend>eigen</depend>
+  <depend>tbb<depend>
   
   <export>
     <build_type>ament_cmake</build_type>
