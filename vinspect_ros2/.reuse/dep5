@@ -1,7 +1,7 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
-Upstream-Name: vinspect
+Upstream-Name: vinspect_ros2
 Upstream-Contact: Marc Bestmann <marc.bestmann@dlr.de>
-Source: github.com/dlr-mo/vinspect
+Source: github.com/dlr-mo/vinspect_ros2
 
 # Sample paragraph, commented out:
 #
