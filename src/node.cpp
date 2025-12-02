@@ -25,8 +25,9 @@
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
 #include <std_msgs/msg/color_rgba.hpp>
-#include <std_msgs/msg/string.hpp>
+#include <std_msgs/msg/empty.hpp>
 #include <std_msgs/msg/int32.hpp>
+#include <std_msgs/msg/string.hpp>
 #include <std_srvs/srv/empty.hpp>
 #include <visualization_msgs/msg/interactive_marker_feedback.hpp>
 #include <visualization_msgs/msg/marker.hpp>
@@ -34,6 +35,8 @@
 
 #include "vinspect/sparse_mesh.hpp"
 #include "vinspect/inspection.hpp"
+#include "vinspect/sensors.hpp"
+#include "vinspect/utils.hpp"
 #include "vinspect_msgs/msg/area_data.hpp"
 #include "vinspect_msgs/msg/settings.hpp"
 #include "vinspect_msgs/msg/sparse.hpp"
@@ -41,34 +44,12 @@
 
 #include "vinspect_msgs/srv/start_reconstruction.hpp"
 
+#include <vinspect_ros2/vinspect_parameters.hpp> 
+
 using namespace std::chrono_literals;
 typedef message_filters::sync_policies::ApproximateTime<
     sensor_msgs::msg::Image, sensor_msgs::msg::Image>
   approx_policy;
-/**
- * Converts a string array to a list of sensor type enums.
- *  @param string_array:
- * @return:
- */
-std::vector<vinspect::SensorType> stringArrayToEnum(
-  const std::vector<std::string> & string_array)
-{
-  std::vector<vinspect::SensorType> enums;
-  for (const auto & s : string_array) {
-    if (s == "SPARSE") {
-      enums.push_back(vinspect::SensorType::SPARSE);
-    } else if (s == "RGB") {
-      enums.push_back(vinspect::SensorType::RGB);
-    } else if (s == "DEPTH") {
-      enums.push_back(vinspect::SensorType::DEPTH);
-    } else if (s == "RGBD") {
-      enums.push_back(vinspect::SensorType::RGBD);
-    } else {
-      throw std::runtime_error("Unknown sensor type: " + s);
-    }
-  }
-  return enums;
-}
 
 double mean(std::vector<double> const & v)
 {
@@ -79,134 +60,94 @@ double mean(std::vector<double> const & v)
   return std::reduce(v.begin(), v.end()) / count;
 }
 
-bool compLess(double a, double b) {return a < b;}
-
 class VinspectNode : public rclcpp::Node
 {
-public:
+  public:
   VinspectNode()
-  : Node("vinspect_node")
+  : Node("vinspect_node"), 
+    param_listener_{std::make_shared<vinspect::ParamListener>(get_node_parameters_interface())},
+    params_{param_listener_->get_params()}
   {
-    displayed_value_name_ = declare_parameter<std::string>("value_to_display", "");
-    round_to_decimals_ = declare_parameter<int>("round_to_decimals", -1);
-    save_path_ = declare_parameter<std::string>("save_path", "");
-    frame_id_ = declare_parameter<std::string>("frame_id", "world");
-    record_joints_ = declare_parameter<bool>("record_joints", false);
-    current_ref_mesh_ = declare_parameter<std::string>("ref_mesh_path", "");
-    std::vector<double> dense_senor_resolution = declare_parameter<std::vector<double>>(
-      "dense_senor_resolution", {1.0, 1.0});
-    std::vector<double> inspection_space_3d_min = declare_parameter<std::vector<double>>(
-      "inspection_space_3d_min", {-1.0, -1.0, -1.0});
-    std::vector<double> inspection_space_3d_max = declare_parameter<std::vector<double>>(
-      "inspection_space_3d_max", {1.0, 1.0, 1.0});
-    std::vector<double> inspection_space_6d_min = declare_parameter<std::vector<double>>(
-      "inspection_space_6d_min", {-1.0, -1.0, -1.0, -1.0, -1.0, -1.0});
-    std::vector<double> inspection_space_6d_max = declare_parameter<std::vector<double>>(
-      "inspection_space_6d_max", {1.0, 1.0, 1.0, 1.0, 1.0, 1.0});
-    if (
-      inspection_space_3d_min[0] < inspection_space_3d_max[0] &&
-      inspection_space_3d_min[1] < inspection_space_3d_max[1] &&
-      inspection_space_3d_min[2] < inspection_space_3d_max[2])
-    {
-      inspection_space_3d_min_ = {
-        inspection_space_3d_min[0], inspection_space_3d_min[1], inspection_space_3d_min[2]};
-      inspection_space_3d_max_ = {
-        inspection_space_3d_max[0], inspection_space_3d_max[1], inspection_space_3d_max[2]};
-    } else {
-      RCLCPP_ERROR(get_logger(), "The 3D inspection space min and max values are not valid.");
-      exit(1);
+    
+    // Check if the workspace bounds make sense
+    for (int i = 0; i < 3; ++i) {
+      if (params_.inspection_space_3d.min[i] > params_.inspection_space_3d.max[i])
+      {
+        RCLCPP_ERROR(get_logger(), "The 3D inspection space min and max values are not valid.");
+        exit(1);
+      }
     }
-    if (
-      inspection_space_6d_min[0] < inspection_space_6d_max[0] &&
-      inspection_space_6d_min[1] < inspection_space_6d_max[1] &&
-      inspection_space_6d_min[2] < inspection_space_6d_max[2] &&
-      inspection_space_6d_min[3] < inspection_space_6d_max[3] &&
-      inspection_space_6d_min[4] < inspection_space_6d_max[4] &&
-      inspection_space_6d_min[5] < inspection_space_6d_max[5])
-    {
-      inspection_space_6d_min_ = {
-        inspection_space_6d_min[0], inspection_space_6d_min[1], inspection_space_6d_min[2],
-        inspection_space_6d_min[3], inspection_space_6d_min[4], inspection_space_6d_min[5]};
-      inspection_space_6d_max_ = {
-        inspection_space_6d_max[0], inspection_space_6d_max[1], inspection_space_6d_max[2],
-        inspection_space_6d_max[3], inspection_space_6d_max[4], inspection_space_6d_max[5]};
-    } else {
-      RCLCPP_ERROR(get_logger(), "The 6D inspection space min and max values are not valid.");
-      exit(1);
+    for (int i = 0; i < 6; ++i) {
+      if (params_.inspection_space_6d.min[i] > params_.inspection_space_6d.max[i])
+      {
+        RCLCPP_ERROR(get_logger(), "The 6D inspection space min and max values are not valid.");
+        exit(1);
+      }
     }
-
-    std::vector<double> sparse_min_color_values = declare_parameter<std::vector<double>>(
-      "sparse_min_color_values", std::vector<double>(0));
-    std::vector<double> sparse_max_color_values = declare_parameter<std::vector<double>>(
-      "sparse_max_color_values", std::vector<double>(0));
-
-    std::string sparse_topic = declare_parameter<std::string>("sparse_topic", "sparse");
-    std::string joint_topic = declare_parameter<std::string>("joint_topic", "joint_states");
-    std::vector<std::string> sensor_type_strings = declare_parameter<std::vector<std::string>>(
-      "sensor_types", {"SPARSE"});
-    std::vector<vinspect::SensorType> sensor_types = stringArrayToEnum(sensor_type_strings);
-    std::vector<std::string> sensor_data_type_names = declare_parameter<std::vector<std::string>>(
-      "sensor_data_type_names", {"", ""});
-    std::vector<std::string> sensor_data_type_units = declare_parameter<std::vector<std::string>>(
-      "sensor_data_type_units", {"", ""});
-    std::string load_path = declare_parameter<std::string>("load_path", "");
-
-    std::vector<std::string> rgbd_color_topics = declare_parameter<std::vector<std::string>>(
-      "rgbd_color_topics", {""});
-    std::vector<std::string> rgbd_depth_topics = declare_parameter<std::vector<std::string>>(
-      "rgbd_depth_topics", {""});
-    std::vector<std::string> rgbd_info_topics = declare_parameter<std::vector<std::string>>(
-      "rgbd_info_topics", {""});
 
     // Get joint names from robot_state_publisher
-    if (record_joints_) {
+    if (params_.joints_topic.size() > 0) {
       // todo Maybe get from robot_state_publisher? Normally easier to just get from topic
       // todo Let this listen for a few seconds, if no messages come print a warning
       joint_states_sub_ = this->create_subscription<sensor_msgs::msg::JointState>(
-        joint_topic, 10, std::bind(&VinspectNode::jointCb, this, std::placeholders::_1));
+        params_.joints_topic, 10, std::bind(&VinspectNode::jointCb, this, std::placeholders::_1));
     }
 
-    if (current_ref_mesh_.length() > 0) {
-      std::string path = current_ref_mesh_;
-      if (current_ref_mesh_.substr(0, 10) == "package://") {
-        // This is a path based on a package in the format
-        // package://package_name/path_inside_package
-        std::string sub_path = current_ref_mesh_.substr(10);
-        size_t end_index = sub_path.find('/');
-        std::string package_name = sub_path.substr(0, end_index);
-        std::string package_path = ament_index_cpp::get_package_share_directory(package_name);
-        path = package_path + "/" + sub_path.substr(end_index + 1);
-      }
-      if (!open3d::io::ReadTriangleMesh(path, mesh_)) {
-        RCLCPP_ERROR(this->get_logger(), "Error reading reference mesh.");
-      }
-    } else {
-      RCLCPP_INFO(this->get_logger(), "No reference mesh path specified.");
-    }
-
-    if (load_path.length() > 0) {
-      inspection_ = vinspect::load(load_path);
+    // Check if file exists
+    if (std::filesystem::exists(params_.save_path)) {
+      inspection_ = std::make_unique<vinspect::Inspection>(params_.save_path);
       // if we loaded data, we should not directly record data
       paused_ = true;
-    } else if (std::filesystem::exists(save_path_)) {
-      RCLCPP_WARN(
-        this->get_logger(), "Loading already existing inspection at %s", save_path_.c_str());
-      // todo we would need to check if any header information changed
-      inspection_ = vinspect::load(save_path_);
     } else {
-      std::vector<std::string> joint_names = {};                // todo
-      inspection_ = vinspect::Inspection(
-        sensor_types, sensor_data_type_names, sensor_data_type_units, joint_names, mesh_,
-        std::make_tuple(
-          dense_senor_resolution[0],
-          dense_senor_resolution[1]),
-        save_path_, inspection_space_3d_min_, inspection_space_3d_max_, inspection_space_6d_min_,
-        inspection_space_6d_max_, sparse_min_color_values,
-        sparse_max_color_values);
-    }
-    inspection_.startSaving();
+      // Create sensor objects
+      std::vector<vinspect::SparseValueInfo> sparse_value_infos;      
+      for (std::size_t i = 0; i < params_.sparse.value_names.size(); ++i) {
+        sparse_value_infos.push_back(
+          vinspect::SparseValueInfo{
+            .name = params_.sparse.value_names[i],
+            .unit = params_.sparse.value_units[i]
+          }
+        );
+      }
 
-    sparse_mesh_ = std::make_shared<vinspect::SparseMesh>(inspection_);
+      std::vector<vinspect::DenseSensor> dense_sensors;
+      for (const auto& name : params_.dense_sensor_names) {
+        auto sensor_params = params_.dense_sensor_names_map.at(name);
+        dense_sensors.emplace_back(
+          std::stoi(name),
+          sensor_params.width,
+          sensor_params.height,
+          sensor_params.depth_scale
+        ); 
+      }
+
+      // Resolve mesh path
+      std::string ref_mesh_path = params_.ref_mesh_path;
+      if (ref_mesh_path.starts_with("package://")) {
+        // Create stream and drop the prefix
+        std::stringstream stream(ref_mesh_path.substr(10)); 
+        // Extract the package name
+        std::string package_name;
+        std::getline(stream, package_name, '/');
+        std::string path_in_package;
+        std::getline(stream, path_in_package);
+        // Combine the package path and the path in the package
+        ref_mesh_path = ament_index_cpp::get_package_share_directory(package_name) + "/" + path_in_package;
+      }
+
+      inspection_ = std::make_unique<vinspect::Inspection>(
+        sparse_value_infos,
+        dense_sensors,
+        ref_mesh_path,
+        params_.save_path, 
+        vinspect::vec2array<double, 3>(params_.inspection_space_3d.min), 
+        vinspect::vec2array<double, 3>(params_.inspection_space_3d.max), 
+        vinspect::vec2array<double, 6>(params_.inspection_space_6d.min),
+        vinspect::vec2array<double, 6>(params_.inspection_space_6d.max)
+      );
+    }
+
+    sparse_mesh_ = std::make_unique<vinspect::SparseMesh>(*inspection_);
 
     // Don't use default callback group to allow parallel execution of multiple parts
     rclcpp::QoS latching_qos = rclcpp::QoS(1).transient_local();
@@ -221,14 +162,13 @@ public:
       this->create_publisher<visualization_msgs::msg::MarkerArray>("visualization_marker_array",
       latching_qos);
 
-    old_object_ = "Null";
     old_transparency_ = -0.1;
     last_mesh_number_sparse_ = -1;
     dot_size_ = 0.5 * 0.001;
     mean_min_max_ = vinspect_msgs::msg::Settings::MEAN;
     selection_sphere_radius_ = 0.02;
 
-    mesh_marker_msg_.header.frame_id = frame_id_;
+    mesh_marker_msg_.header.frame_id = params_.frame_id;
     mesh_marker_msg_.type = mesh_marker_msg_.TRIANGLE_LIST;
     mesh_marker_msg_.id = 1;
     mesh_marker_msg_.ns = "mesh";
@@ -264,18 +204,19 @@ public:
     options2.callback_group = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
     // use keep all quality of service setting to avoid loosing data
     rclcpp::QoS keep_all_reliable_qos = rclcpp::QoS(1).keep_all().reliable();
-    if (
-      std::find(sensor_types.begin(), sensor_types.end(), vinspect::SensorType::SPARSE) !=
-      sensor_types.end())
-    {
+
+    // Create sparse subscriptions
+    if (inspection_->getSparseUsage()) {
       sparse_sub_ = this->create_subscription<vinspect_msgs::msg::Sparse>(
-        sparse_topic, keep_all_reliable_qos,
-        std::bind(&VinspectNode::sparseCb, this, std::placeholders::_1), options2);
+        params_.sparse.topic,
+        keep_all_reliable_qos,
+        std::bind(&VinspectNode::sparseCb, this, std::placeholders::_1),
+        options2);
     }
 
     rclcpp::SubscriptionOptions options3;
     options3.callback_group = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-    dense_req_sub = this->create_subscription<std_msgs::msg::String>(
+    dense_req_sub = this->create_subscription<std_msgs::msg::Empty>(
       "vinspect/dense_data_req", latching_qos,
       std::bind(&VinspectNode::denseDataReq, this, std::placeholders::_1), options3);
 
@@ -285,12 +226,7 @@ public:
       "vinspect/multi_dense_data_req", latching_qos,
       std::bind(&VinspectNode::multiDenseDataReq, this, std::placeholders::_1), options4);
 
-    // todo should be true at the beginning and started with service call
-    dense_pause_ = true;
-    if (rgbd_color_topics.size() > 0 && rgbd_color_topics[0] != "") {
-      // todo could be parameter, is currently updated by service
-      depth_scale_ = 1000.0;
-      depth_trunc_ = 3.0;
+    if (inspection_->getDenseUsage()) {
       tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
       tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
       start_reconstruction_service_ = this->create_service<vinspect_msgs::srv::StartReconstruction>(
@@ -302,35 +238,33 @@ public:
         std::bind(
           &VinspectNode::stopReconstruction, this, std::placeholders::_1, std::placeholders::_2));
       // create subscriptions for any number of rgbd cameras
-      if (
-        rgbd_color_topics.size() !=
-        rgbd_depth_topics.size())    // todo or != rgbd_info_topics.size()
-      {
-        RCLCPP_FATAL(this->get_logger(), "Number of RGBD color and depth topics do not match.");
-        exit(1);
-      }
-      for (uint64_t i = 0; i < rgbd_color_topics.size(); i++) {
+      for (const auto& name : params_.dense_sensor_names) {
+        auto sensor_params = params_.dense_sensor_names_map.at(name);
+
         // todo maybe we should use  image_transport::SubscriberFilter for more performance?
-        color_subs_.push_back(
-          std::make_shared<message_filters::Subscriber<sensor_msgs::msg::Image>>());
-        depth_subs_.push_back(
-          std::make_shared<message_filters::Subscriber<sensor_msgs::msg::Image>>());
+        auto& color_sub = color_subs_.emplace_back(std::make_shared<message_filters::Subscriber<sensor_msgs::msg::Image>>());
+        auto& depth_sub = depth_subs_.emplace_back(std::make_shared<message_filters::Subscriber<sensor_msgs::msg::Image>>());
+
+        color_sub->subscribe(this, sensor_params.color_topic);
+        depth_sub->subscribe(this, sensor_params.depth_topic);
+
         // todo maybe we need a common mutial exclusive callback group for these, as they all
-        // acces the TSDF. or non exclusive groups?
+        // access the TSDF. or non exclusive groups?  No, because the events executor is single threaded
         // todo specify qos and options as further arguments
-        color_subs_[i]->subscribe(this, rgbd_color_topics[i].c_str());
-        depth_subs_[i]->subscribe(this, rgbd_depth_topics[i].c_str());
         std::shared_ptr<message_filters::Synchronizer<approx_policy>> rgbd_sync =
           std::make_shared<message_filters::Synchronizer<approx_policy>>(
-          approx_policy(100), *color_subs_[i].get(), *depth_subs_[i].get());
+          approx_policy(100), *color_sub.get(), *depth_sub.get());
         rgbd_sync->getPolicy()->setMaxIntervalDuration(rclcpp::Duration::from_seconds(1.0 / 30.0));
-        rgbd_sync->registerCallback(&VinspectNode::cameraCb, this);
+        rgbd_sync->registerCallback(std::bind(&VinspectNode::cameraCb, this, std::placeholders::_1, std::placeholders::_2, name));
         rgbd_syncs_.push_back(rgbd_sync);
 
         rgbd_info_subs_.push_back(
           this->create_subscription<sensor_msgs::msg::CameraInfo>(
-            rgbd_info_topics[i], 10,
-            std::bind(&VinspectNode::cameraInfoCb, this, std::placeholders::_1)));
+            sensor_params.camera_info_topic, 
+            10, 
+            [this, name](const sensor_msgs::msg::CameraInfo msg) {
+              cameraInfoCb(msg, name);
+            }));
       }
     }
 
@@ -345,7 +279,7 @@ public:
 
     rclcpp::SubscriptionOptions options6;
     options6.callback_group = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-    selection_marker_sub_ =
+    pose_marker_sub_ =
       this->create_subscription<visualization_msgs::msg::InteractiveMarkerFeedback>(
       "pose_marker/feedback", 10,
       std::bind(&VinspectNode::denseInteractiveMarkerCb, this, std::placeholders::_1), options6);
@@ -359,19 +293,19 @@ public:
   void showCurrentData()
   {
     // only show this if the inspection has sparse data
-    if (inspection_.getSparseUsage()) {
+    if (inspection_->getSparseUsage()) {
       mtx_.lock();
       // update if settings changed or new measurements are available
       // only compute anything if there is someone listening for the mesh
       if (
-        (settings_changed_ || (last_mesh_number_sparse_ != inspection_.getSparseDataCount() &&
-        inspection_.getSparseDataCount() != 0)) &&
+        (settings_changed_ || (last_mesh_number_sparse_ != inspection_->getSparseDataCount() &&
+        inspection_->getSparseDataCount() != 0)) &&
         sparse_mesh_pub_->get_subscription_count() > 0)
       {
         settings_changed_ = false;
         const open3d::geometry::TriangleMesh mesh =
           sparse_mesh_->createMesh(dot_size_, use_custom_color_, mean_min_max_);
-        last_mesh_number_sparse_ = inspection_.getSparseDataCount();
+        last_mesh_number_sparse_ = inspection_->getSparseDataCount();
         mtx_.unlock();
 
         mesh_marker_msg_.points.clear();
@@ -404,13 +338,13 @@ public:
 
   void showStatus()
   {
-    status_msg_.recorded_values = inspection_.getSparseDataCount();
+    status_msg_.recorded_values = inspection_->getSparseDataCount();
     if (paused_) {
       status_msg_.status = "paused";
     } else {
       status_msg_.status = "running";
     }
-    status_msg_.integrated_images = inspection_.getIntegratedImagesCount();
+    status_msg_.integrated_images = inspection_->getIntegratedImagesCount();
     if (dense_pause_) {
       status_msg_.dense_status = "paused";
     } else {
@@ -424,13 +358,20 @@ public:
   {
     // only compute anything if there is someone listening for the mesh
     if (dense_mesh_pub_->get_subscription_count() > 0 &&
-      inspection_.getIntegratedImagesCount() > 0)
+      inspection_->getIntegratedImagesCount() > 0)
     {
       std::shared_ptr<open3d::geometry::TriangleMesh> mesh =
-        inspection_.extractDenseReconstruction();
-      visualization_msgs::msg::Marker mesh_msg = visualization_msgs::msg::Marker();
+        inspection_->extractDenseReconstruction();
+
+      if(mesh->triangles_.size() == 0) {
+        RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+          "Reconstructed mesh is empty. Check if your depth scale and your inspection space are correct.");
+        return;
+      }
+
+      visualization_msgs::msg::Marker mesh_msg;
       mesh_msg.header.stamp = this->get_clock()->now();
-      mesh_msg.header.frame_id = frame_id_;
+      mesh_msg.header.frame_id = params_.frame_id;
       mesh_msg.type = mesh_msg.TRIANGLE_LIST;
       // todo maybe we need to remove the old one first
       mesh_msg.action = mesh_msg.ADD;
@@ -439,6 +380,7 @@ public:
       mesh_msg.scale.y = 1.0;
       mesh_msg.scale.z = 1.0;
       mesh_msg.pose.orientation.w = 1.0;
+
       for (Eigen::Vector3i triangle : mesh->triangles_) {
         for (int vertex_index : triangle) {
           geometry_msgs::msg::Point curr_point = geometry_msgs::msg::Point();
@@ -458,13 +400,6 @@ public:
     }
   }
 
-  void finish()
-  {
-    mtx_.lock();
-    inspection_.finish();
-    mtx_.unlock();
-  }
-
 private:
   /**
    * Callback for joint topic. Adds incomung data to inspection.
@@ -477,16 +412,16 @@ private:
   }
 
   /**
-   * Callback for sparse topic. Adds incomung data to inspection.
+   * Callback for sparse topic. Adds incoming data to inspection.
    * @param msg Sparse ROS message
    * @return
    */
-  void sparseCb(vinspect_msgs::msg::Sparse msg)
+  void sparseCb(const vinspect_msgs::msg::Sparse msg)
   {
     if (!paused_) {
-      if (msg.header.frame_id != frame_id_) {
+      if (msg.header.frame_id != params_.frame_id) {
         RCLCPP_WARN_STREAM(
-          this->get_logger(), "Frame id mismatch: " << msg.header.frame_id << " != " << frame_id_
+          this->get_logger(), "Frame id mismatch: " << msg.header.frame_id << " != " << params_.frame_id
                                                     << ". Ignoring message");
       }
       uint64_t timestamp = rclcpp::Time(msg.header.stamp).nanoseconds();
@@ -509,7 +444,7 @@ private:
           "Alpha channel is not supported. Please set the alpha channel to 1.0");
       }
       mtx_.lock();
-      inspection_.addSparseMeasurement(
+      inspection_->addSparseMeasurement(
         time_in_seconds, sensor_id, position, orientation, values, color);
       mtx_.unlock();
     }
@@ -521,7 +456,7 @@ private:
       std::array<double, 3> point_coords = {
         feedback.pose.position.x, feedback.pose.position.y, feedback.pose.position.z};
       mtx_.lock();
-      if (inspection_.getSparseDataCount() == 0) {
+      if (inspection_->getSparseDataCount() == 0) {
         mtx_.unlock();
         display_data_msg_.in_area = "No measurement";
         display_data_msg_.next_neighbor = "No measurement";
@@ -531,11 +466,11 @@ private:
         display_data_pub_->publish(display_data_msg_);
       } else {
         std::vector<uint64_t> points_in_area =
-          inspection_.getSparseMeasurementsInRadius(point_coords, selection_sphere_radius_);
-        uint64_t closests_point = inspection_.getClosestSparseMeasurement(point_coords);
+          inspection_->getSparseMeasurementsInRadius(point_coords, selection_sphere_radius_);
+        uint64_t closests_point = inspection_->getClosestSparseMeasurement(point_coords);
         std::vector<double> values_in_area =
-          inspection_.getValuesForIds(displayed_value_name_, points_in_area);
-        std::vector<std::string> units = inspection_.getSparseUnits();
+          inspection_->getSparseValuesForIds(params_.sparse.value_to_display, points_in_area);
+        std::vector<std::string> units = inspection_->getSparseUnits();
         mtx_.unlock();
 
         double mean_value = 0;
@@ -544,7 +479,10 @@ private:
         std::string unit = units[0];  // todo the index 0 should be chosen dynamically
         if (values_in_area.size() > 0) {
           mean_value = mean(values_in_area);
-          auto minmax = std::minmax_element(values_in_area.begin(), values_in_area.end(), compLess);
+          auto minmax = std::minmax_element(
+            values_in_area.begin(), 
+            values_in_area.end()
+          );
           min_value = *minmax.first;
           max_value = *minmax.second;
         }
@@ -559,35 +497,6 @@ private:
     }
   }
 
-  /**
-   * Orders the image from a std::vector<std::vector<std::array<u_int8_t,3>>>
-   * To sensor_msgs::msg::Image type.
-   * @param image in as vector
-   * @return image as sensor_msgs::msg::Image
-   */
-  sensor_msgs::msg::Image vectorToImageMsg(
-    const std::vector<std::vector<std::array<u_int8_t,
-    3>>> & image)
-  {
-    sensor_msgs::msg::Image msg;
-    msg.height = image.size();
-    msg.width = image[1].size();
-
-    msg.encoding = "rgb8";
-
-    msg.step = msg.width * 3;
-
-    msg.data.resize(msg.height * msg.step);
-    for (size_t i = 0; i < msg.height; i++) {
-      for (size_t j = 0; j < msg.width; j++) {
-        size_t index = (i * msg.width + j) * 3;
-        msg.data[index + 0] = image[i][j][0];
-        msg.data[index + 1] = image[i][j][1];
-        msg.data[index + 2] = image[i][j][2];
-      }
-    }
-    return msg;
-  }
   /**
    * Callback for the denseInteractiveMarker. Used to set the current pose.
    * @param feedback InteractiveMarkerFeedback message
@@ -650,20 +559,24 @@ private:
    */
   // Note: If it stays like this, it could also be a service/client call. Thought we have more
   // options in the future if this message is used as a settings string or something similar later.
-  void denseDataReq(std_msgs::msg::String)
+  void denseDataReq(std_msgs::msg::Empty)
   {
     mtx_.lock();
-    if (inspection_.getDenseDataCount() == 0) {
+    if (inspection_->getDenseDataCount() == 0) {
       mtx_.unlock();
       RCLCPP_INFO(this->get_logger(), "No dense data available");
     } else {
       RCLCPP_INFO(this->get_logger(), "Asking vinspect for images");
-      int id_to_get = inspection_.getClosestDenseMeasurement(dense_interactive_marker_pose_);
-      auto image = inspection_.getImageFromId(id_to_get);
-      auto pose = inspection_.getDensePoseFromId(id_to_get);
-      pubRefMeshDense(inspection_.eulerToQuatPose(pose));
-      auto msg = vectorToImageMsg(image);
-      dense_image_pub_->publish(msg);
+      int id_to_get = inspection_->getClosestDenseMeasurement(dense_interactive_marker_pose_);
+      auto image = inspection_->getImageFromId(id_to_get);
+      auto pose = inspection_->getDensePoseFromId(id_to_get);
+      pubRefMeshDense(vinspect::eulerToQuatPose(pose));
+      auto msg = cv_bridge::CvImage(
+        std_msgs::msg::Header(), // We do not have any header information at this point
+        "rgb8",
+        image
+      ).toImageMsg();
+      dense_image_pub_->publish(*msg);
       RCLCPP_INFO(this->get_logger(), "Published image");
       mtx_.unlock();
     }
@@ -671,22 +584,22 @@ private:
 
   double roundValue(double value)
   {
-    if (round_to_decimals_ < 0) {
+    if (params_.round_to_decimals < 0) {
       // no rounding
       return value;
     } else {
       // round to number of decimals after the decimal point
-      return round(value * pow(10, round_to_decimals_)) / pow(10, round_to_decimals_);
+      return round(value * pow(10, params_.round_to_decimals)) / pow(10, params_.round_to_decimals);
     }
   }
 
   void multiDenseDataReq(std_msgs::msg::Int32 msg)
   {
-    std::vector<std::array<double, 6>> poses = inspection_.getMultiDensePoses(msg.data);
+    std::vector<std::array<double, 6>> poses = inspection_->getMultiDensePoses(msg.data);
 
     visualization_msgs::msg::MarkerArray markerArr = visualization_msgs::msg::MarkerArray();
     for (size_t i = 0; i < poses.size(); i++) {
-      std::array<double, 7> quat_pose = inspection_.eulerToQuatPose(poses[i]);
+      std::array<double, 7> quat_pose = vinspect::eulerToQuatPose(poses[i]);
       visualization_msgs::msg::Marker marker = visualization_msgs::msg::Marker();
       marker.header.frame_id = "world";
       marker.type = visualization_msgs::msg::Marker::ARROW;
@@ -725,7 +638,7 @@ private:
   void pubRefMesh(float transparency)
   {
     visualization_msgs::msg::Marker marker = visualization_msgs::msg::Marker();
-    marker.header.frame_id = frame_id_;
+    marker.header.frame_id = params_.frame_id;
     marker.type = 10;
     marker.id = 0;
     marker.ns = "ref_mesh";
@@ -735,7 +648,7 @@ private:
 
     marker.action = marker.ADD;
     marker.frame_locked = true;
-    marker.mesh_resource = current_ref_mesh_;
+    marker.mesh_resource = params_.ref_mesh_path;
     marker.mesh_use_embedded_materials = true;
     marker.scale.x = 0.001;
     marker.scale.y = 0.001;
@@ -775,7 +688,7 @@ private:
     if (msg.clear) {
       paused_ = true;
       mtx_.lock();
-      inspection_.clear();
+      inspection_->clear();
       sparse_mesh_->resetMesh();
       mesh_marker_msg_.points.clear();
       mesh_marker_msg_.colors.clear();
@@ -785,36 +698,36 @@ private:
     settings_changed_ = true;
   }
 
-  void cameraInfoCb(sensor_msgs::msg::CameraInfo msg)
+  void cameraInfoCb(const sensor_msgs::msg::CameraInfo msg, const std::string sensor_name)
   {
     // todo maybe we should provide them at the construction of the inspection object
     //  todo need to differentiate between different cameras
     open3d::camera::PinholeCameraIntrinsic intrinsic = open3d::camera::PinholeCameraIntrinsic(
       msg.width, msg.height, msg.k[0], msg.k[4], msg.k[2], msg.k[5]);
-    inspection_.setIntrinsic(intrinsic, 0);
+    inspection_->setIntrinsic(intrinsic, 0); // TODO make sensor id string
   }
 
   void cameraCb(
     const sensor_msgs::msg::Image::ConstSharedPtr & color_image_msg,
-    const sensor_msgs::msg::Image::ConstSharedPtr & depth_image_msg)
-  {
+    const sensor_msgs::msg::Image::ConstSharedPtr & depth_image_msg,
+    const std::string sensor_name
+  ) {
     if (!dense_pause_) {
-      open3d::geometry::Image o3d_color_img;
-      open3d::geometry::Image o3d_depth_img;
+      // Get sensor specific parameters
+      auto sensor_params = params_.dense_sensor_names_map.at(sensor_name);
+
+
+      // color needs to be rgb8
+      if(color_image_msg->encoding != "rgb8" && color_image_msg->encoding != "bgr8") {
+        RCLCPP_ERROR(this->get_logger(), "Unsupported encoding: %s", color_image_msg->encoding.c_str());
+        return;
+      }
+      //  Convert ROS image message to OpenCV
+      cv_bridge::CvImageConstPtr cv2_color_img, cv2_depth_img;
       try {
-        // todo check if this could be done with better performance
-        //  convert ROS image message to opencv
-        cv_bridge::CvImageConstPtr cv2_color_img =
-          cv_bridge::toCvShare(color_image_msg, color_image_msg->encoding);
-        cv_bridge::CvImageConstPtr cv2_depth_img =
-          cv_bridge::toCvShare(depth_image_msg, std::string("16UC1"));
-        // convert opencv image to open3d image
-        // Allocate data buffer
-        o3d_color_img.Prepare(color_image_msg->width, color_image_msg->height, 3, 1);
-        o3d_depth_img.Prepare(depth_image_msg->width, depth_image_msg->height, 1, 2);
-        // copy data from opencv image to open3d image
-        memcpy(o3d_depth_img.data_.data(), cv2_depth_img->image.data, o3d_depth_img.data_.size());
-        memcpy(o3d_color_img.data_.data(), cv2_color_img->image.data, o3d_color_img.data_.size());
+        cv2_color_img = cv_bridge::toCvShare(color_image_msg, "rgb8");
+        // we keep depth in the given format to not loose precision
+        cv2_depth_img = cv_bridge::toCvShare(depth_image_msg, "");
       } catch (cv_bridge::Exception & e) {
         RCLCPP_ERROR(this->get_logger(), "Error converting image from ROS to CV");
         return;
@@ -824,16 +737,12 @@ private:
       geometry_msgs::msg::TransformStamped transformed_pose_world;
       try {
         transformed_pose_optical = tf_buffer_->lookupTransform(
-          color_image_msg->header.frame_id, frame_id_, color_image_msg->header.stamp);
+          sensor_params.optical_frame_id, params_.frame_id, color_image_msg->header.stamp, 100ms);
 
         /* Note: It is expected that an equivalent non-optical frame exists
         to the optical frame in which the image is published. */
-        std::string non_optical_frame = removeWordFromString(
-          color_image_msg->header.frame_id,
-          "_optical");
-        assert(!non_optical_frame.empty());
         transformed_pose_world = tf_buffer_->lookupTransform(
-          frame_id_, non_optical_frame, color_image_msg->header.stamp);
+          params_.frame_id, sensor_params.frame_id, color_image_msg->header.stamp, 100ms);
       } catch (tf2::TransformException & e) {
         RCLCPP_ERROR(this->get_logger(), "Failed to get transform: %s", e.what());
         return;
@@ -842,12 +751,14 @@ private:
       Eigen::Matrix4d rgb_pose_tsdf = transformStampedToTransformMatix(transformed_pose_optical);
       Eigen::Matrix4d rgb_pose_world = transformStampedToTransformMatix(transformed_pose_world);
 
-      std::shared_ptr<open3d::geometry::RGBDImage> rgbd =
-        open3d::geometry::RGBDImage::CreateFromColorAndDepth(
-        o3d_color_img, o3d_depth_img, depth_scale_, depth_trunc_, false);
-      // open3d::visualization::DrawGeometries({rgbd});
-      //  todo sensor id should not be hardcoded to 0
-      inspection_.integrateImage(*rgbd.get(), 0, rgb_pose_tsdf, rgb_pose_world);
+
+      inspection_->addImage(
+        cv2_color_img->image,
+        cv2_depth_img->image,
+        depth_trunc_,
+        std::stoi(sensor_name), 
+        rgb_pose_tsdf, 
+        rgb_pose_world);
     }
   }
 
@@ -907,9 +818,8 @@ private:
       response->success = false;
       RCLCPP_ERROR(this->get_logger(), "Reconstruction is already running");
     } else {
-      depth_scale_ = request->depth_scale;
       depth_trunc_ = request->depth_trunc;
-      inspection_.reinitializeTSDF(request->voxel_length, request->sdf_trunc);
+      inspection_->reinitializeTSDF(request->voxel_length);
       dense_pause_ = false;
     }
   }
@@ -922,42 +832,32 @@ private:
     dense_pause_ = true;
   }
 
-  vinspect::Inspection inspection_;
-  std::shared_ptr<vinspect::SparseMesh> sparse_mesh_;
-  std::string save_path_;
-  std::string frame_id_;
-  bool record_joints_;
-  open3d::geometry::TriangleMesh mesh_;
-  std::string current_ref_mesh_;
-  std::array<double, 3> inspection_space_3d_min_;
-  std::array<double, 3> inspection_space_3d_max_;
-  std::array<double, 6> inspection_space_6d_min_;
-  std::array<double, 6> inspection_space_6d_max_;
-  int round_to_decimals_;
+  std::unique_ptr<vinspect::Inspection> inspection_{nullptr};
+  std::unique_ptr<vinspect::SparseMesh> sparse_mesh_{nullptr};
 
-  std::string old_object_;
-  double old_transparency_;
-  uint64_t last_mesh_number_sparse_;
-  double dot_size_;
-  double selection_sphere_radius_;
+  double old_transparency_ = 0;
+  uint64_t last_mesh_number_sparse_ = 0;
+  double dot_size_ = 0;
+  double selection_sphere_radius_ = 0;
   int mean_min_max_;
-  bool use_custom_color_;
-  std::string displayed_value_name_;
-  bool paused_;
-  bool dense_pause_;
-  bool settings_changed_;
+  bool use_custom_color_ = false;
+  bool paused_ = false;
+  bool dense_pause_ = true;
+  bool settings_changed_ = false;
   std::mutex mtx_;
   visualization_msgs::msg::Marker mesh_marker_msg_;
   vinspect_msgs::msg::AreaData display_data_msg_;
   vinspect_msgs::msg::Status status_msg_;
 
-  double depth_scale_;
-  double depth_trunc_;
+  double depth_trunc_ = 3.0;
 
   std::array<double, 7> dense_interactive_marker_pose_;
 
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_{nullptr};
+
+  std::shared_ptr<vinspect::ParamListener> param_listener_{nullptr};
+  vinspect::Params params_;
 
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr ref_marker_pub_;
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr sparse_mesh_pub_;
@@ -975,8 +875,8 @@ private:
   std::vector<rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr> rgbd_info_subs_;
   rclcpp::Subscription<vinspect_msgs::msg::Settings>::SharedPtr vis_params_sub_;
   rclcpp::Subscription<visualization_msgs::msg::InteractiveMarkerFeedback>::SharedPtr
-    selection_marker_sub_;
-  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr dense_req_sub;
+    selection_marker_sub_, pose_marker_sub_;
+  rclcpp::Subscription<std_msgs::msg::Empty>::SharedPtr dense_req_sub;
   rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr multi_dense_req_sub;
 
   rclcpp::Service<vinspect_msgs::srv::StartReconstruction>::SharedPtr start_reconstruction_service_;
@@ -1011,6 +911,5 @@ int main(int argc, char ** argv)
   exec.add_node(node);
 
   exec.spin();
-  node->finish();
   rclcpp::shutdown();
 }

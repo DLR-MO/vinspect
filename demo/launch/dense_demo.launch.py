@@ -16,26 +16,33 @@ def generate_launch_description():
         name='vinspect_ros2',
         output='screen',
         emulate_tty=True,
+        # prefix="gdbserver localhost:3000",
         parameters=[
             {
+                'use_sim_time': False,
                 'frame_id': 'world',
-                'sensor_types': ['RGBD', 'RGBD', 'RGBD'],
-                'rgbd_color_topics': [
-                    '/camera/color/image_rect_raw',
-                ],
-                'rgbd_depth_topics': [
-                    '/camera/depth/image_rect_raw',
-                ],
-                'rgbd_info_topics': [
-                    '/camera/color/camera_info',
-                ],
-                'use_sim_time': True,
-                'inspection_space_3d_min': [-2.5, -2.0, -2.0],
-                'inspection_space_3d_max': [-1.5, 2.0, 2.0],
-                'inspection_space_6d_min': [-100.0, -100.0, -100.0, -20.0, -20.0, -20.0],
-                'inspection_space_6d_max': [100.0, 100.0, 100.0, 20, 20, 20],
                 'save_path': '/tmp/demo_dense.vinspect',
-                'dense_senor_resolution': [848.0, 480.0],
+                'round_to_decimals': 2,
+                # TODO string or int sensor name...
+                'dense_sensor_names': ["0"],
+                '0': {
+                    'color_topic': '/camera/camera1/color/image_rect_raw',
+                    'depth_topic': '/camera/camera1/depth/image_rect_raw/normalized',
+                    'camera_info_topic': '/camera/camera1/color/camera_info',
+                    'width': 640,
+                    'height': 480,
+                    'depth_scale': 1.0,
+                    'frame_id': 'camera1_link',
+                    'optical_frame_id': 'camera1_depth_optical_frame'
+                },
+                'inspection_space_3d': {
+                    'min': [-5.0, -5.0, -5.0],
+                    'max': [5.0,  5.0,  5.0]
+                },
+                'inspection_space_6d': {
+                    'min': [-100.0, -100.0, -100.0, -20.0, -20.0, -20.0],
+                    'max': [100.0, 100.0, 100.0, 20, 20, 20]
+                },
             }
         ],
     )
