@@ -128,12 +128,12 @@ SettingsPanel::SettingsPanel(QWidget * parent)
 
   // dense settings
   QGridLayout * dense_layout = new QGridLayout(this);
-  QStringList input_names = {"voxel_length_", "sdf_trunc_", "depth_scale_", "depth_trunc_"};
+  QStringList input_names = {"voxel_length_", "depth_trunc_"};
   std::reference_wrapper<QLineEdit *> input_objects[] = {
-    voxel_length_, sdf_trunc_, depth_scale_, depth_trunc_};
+    voxel_length_, depth_trunc_};
   int row = 0;
   int column = 0;
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < input_names.size(); i++) {
     input_objects[i].get() = new QLineEdit("");
     input_objects[i].get()->setPlaceholderText("Set " + input_names[i]);
     dense_layout->addWidget(input_objects[i], row, column);
@@ -215,7 +215,7 @@ void SettingsPanel::onInitialize()
     "/vinspect/start_reconstruction");
   stop_client_ =
     plugin_node_->create_client<std_srvs::srv::Empty>("/vinspect/stop_reconstruction");
-  dense_req_publisher_ = plugin_node_->create_publisher<std_msgs::msg::String>(
+  dense_req_publisher_ = plugin_node_->create_publisher<std_msgs::msg::Empty>(
     "vinspect/dense_data_req", latching_qos);
   dense_available_poses_publisher_ = plugin_node_->create_publisher<std_msgs::msg::Int32>(
     "vinspect/multi_dense_data_req", latching_qos);
@@ -321,9 +321,7 @@ void SettingsPanel::requestStartClick()
   auto request = std::make_shared<vinspect_msgs::srv::StartReconstruction::Request>();
 
   request->voxel_length = voxel_length_->text().toFloat();
-  request->sdf_trunc = sdf_trunc_->text().toFloat();
 
-  request->depth_scale = depth_scale_->text().toFloat();
   request->depth_trunc = depth_trunc_->text().toFloat();
 
   using ServiceResponseFutureStart =
@@ -353,23 +351,22 @@ void SettingsPanel::requestStopClick()
 
 void SettingsPanel::setDefaultClick(const std::reference_wrapper<QLineEdit *> input_objects[])
 {
-  QStringList default_input = {"0.02", "0.04", "1000.0", "0.75"};
-  for (int i = 0; i < 4; i++) {
+  QStringList default_input = {"0.02", "0.75"};
+  for (int i = 0; i < 2; i++) {
     input_objects[i].get()->setText(default_input[i]);
   }
 }
 
 void SettingsPanel::clearClick(const std::reference_wrapper<QLineEdit *> input_objects[])
 {
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < 2; i++) {
     input_objects[i].get()->setText("");
   }
 }
 
 void SettingsPanel::denseReqClick()
 {
-  auto message = std_msgs::msg::String();
-  message.data = "request";
+  auto message = std_msgs::msg::Empty();
   dense_req_publisher_->publish(message);
 }
 

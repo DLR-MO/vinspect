@@ -27,7 +27,7 @@
 #include <geometry_msgs/msg/vector3.hpp>
 #include <rviz_common/display_context.hpp>
 #include <rviz_common/panel.hpp>
-#include <std_msgs/msg/string.hpp>
+#include <std_msgs/msg/empty.hpp>
 #include <std_msgs/msg/int32.hpp>
 #include <std_srvs/srv/empty.hpp>
 
@@ -71,7 +71,6 @@ protected:
   QButtonGroup * button_group_color_;
 
   QLineEdit * voxel_length_;
-  QLineEdit * sdf_trunc_;
   QLineEdit * depth_scale_;
   QLineEdit * depth_trunc_;
 
@@ -81,7 +80,7 @@ protected:
 
   std::shared_ptr<rclcpp::Node> plugin_node_;
   rclcpp::Publisher<vinspect_msgs::msg::Settings>::SharedPtr settings_publisher_;
-  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr dense_req_publisher_;
+  rclcpp::Publisher<std_msgs::msg::Empty>::SharedPtr dense_req_publisher_;
   rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr dense_available_poses_publisher_;
   rclcpp::Client<vinspect_msgs::srv::StartReconstruction>::SharedPtr start_client_;
   rclcpp::Client<std_srvs::srv::Empty>::SharedPtr stop_client_;
