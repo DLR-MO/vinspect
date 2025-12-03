@@ -1,0 +1,4 @@
+string status
+int64 recorded_values
+string dense_status
+int64 integrated_images
