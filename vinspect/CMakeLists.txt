@@ -15,6 +15,7 @@ set(PYBIND11_FINDPYTHON ON)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/")
 set(Open3D_ROOT /usr/)
 
+# TODO this is not available without ROS...
 find_package(ament_cmake REQUIRED) 
 find_package(ament_cmake_python REQUIRED)
 find_package(Open3D REQUIRED)
@@ -74,7 +75,7 @@ set(SOURCES src/inspection.cpp src/utils.cpp src/sparse_mesh.cpp ${PROTO_SRCS} $
 
 add_library(${PROJECT_NAME} SHARED ${SOURCES})
 
-target_link_libraries(${PROJECT_NAME} TBB::tbb OpenMP::OpenMP_CXX rocksdb ${PROTOBUF_LIBRARY} ${DCMTK_LIBRARIES}  ${OpenCV_LIBS} ${fmt_LIBRARIES})
+target_link_libraries(${PROJECT_NAME} TBB::tbb OpenMP::OpenMP_CXX rocksdb fmt::fmt ${PROTOBUF_LIBRARY} ${DCMTK_LIBRARIES}  ${OpenCV_LIBS} ${fmt_LIBRARIES})
 
 ament_target_dependencies(${PROJECT_NAME}
   ament_cmake
@@ -95,7 +96,7 @@ ament_target_dependencies(vinspect_py PUBLIC
   nlohmann_json
   fmt
 )
-target_link_libraries(vinspect_py PUBLIC vinspect rocksdb ${PROTOBUF_LIBRARY} ${OpenCV_LIBS} ${DCMTK_LIBRARIES} ${fmt_LIBRARIES})
+target_link_libraries(vinspect_py PUBLIC vinspect rocksdb fmt::fmt ${PROTOBUF_LIBRARY} ${OpenCV_LIBS} ${DCMTK_LIBRARIES} ${fmt_LIBRARIES})
 set_target_properties(vinspect_py PROPERTIES LINKER_LANGUAGE CXX)
 
 if(BUILD_TESTING)
@@ -137,5 +138,4 @@ ament_export_libraries(rocksdb)
 ament_export_libraries(${PROJECT_NAME})
 ament_export_include_directories(include)
 ament_export_include_directories(${CMAKE_CURRENT_BINARY_DIR}) #ToDo See line: 34
-#ament_export_include_directories(rocksdb)
 ament_package()

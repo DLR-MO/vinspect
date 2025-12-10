@@ -172,7 +172,8 @@ std::vector<uint64_t> Inspection::getSparseMeasurementsInRadius(
     auto const search_box_cpp = OrthoTree::BoundingBox3D{
       {position[0] - radius, position[1] - radius, position[2] - radius},
       {position[0] + radius, position[1] + radius, position[2] + radius}};
-    std::vector<uint64_t> ids_in_box = sparse_octree_.RangeSearch(search_box_cpp);
+    auto temp_32_bit = sparse_octree_.RangeSearch(search_box_cpp);
+    std::vector<uint64_t> ids_in_box(temp_32_bit.begin(), temp_32_bit.end());
     std::vector<uint64_t> ids_in_radius = {};
     for (uint64_t i = 0; i < ids_in_box.size(); i++) {
       int id = ids_in_box[i];
