@@ -1,6 +1,6 @@
 # Saves the inspection
 string path
-string part_name
-string part_id
+string component_name
+string component_id
 ---
 bool success

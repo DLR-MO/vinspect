@@ -833,8 +833,8 @@ private:
     const fs::path save_folder(request->path);
     inspection_->saveDiconde(
       save_folder,
-      request->part_name,
-      request->part_id,
+      request->component_name,
+      request->component_id,
       params_.sparse.diconde.scaling,
       params_.sparse.value_to_display
     );

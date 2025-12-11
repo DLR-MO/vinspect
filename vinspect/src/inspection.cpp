@@ -748,10 +748,10 @@ void Inspection::storeMesh(const std::string & key, const open3d::geometry::Tria
 
 void Inspection::saveDiconde(
   const fs::path & save_folder,
-  const std::string & part_name,
-  const std::string & part_id,
-  const double sparse_value_scaling_factor, // To convert from float to int
-  const std::string & sparse_value_dim  // To select the dimension that should be exported
+  const std::string & component_name,
+  const std::string & component_id,
+  const double sparse_value_scaling_factor,
+  const std::string & sparse_value_dim
 )
 {
   // Acquire mutex for the full save duration, so nothing changes during the saving process
@@ -839,8 +839,8 @@ void Inspection::saveDiconde(
           DcmDataset *dataset = fileformat.getDataset();
       
           // Add general metadata
-          dataset->putAndInsertString(DCM_PatientID, part_id.c_str());
-          dataset->putAndInsertString(DCM_PatientName, part_name.c_str());
+          dataset->putAndInsertString(DCM_ComponentIDNumber, component_id.c_str());
+          dataset->putAndInsertString(DCM_Component, component_name.c_str());
           dataset->putAndInsertString(DCM_SOPClassUID, UID_SecondaryCaptureImageStorage);        
           dataset->putAndInsertString(DCM_SOPInstanceUID, imageSOPUID);
           dataset->putAndInsertString(DCM_SeriesInstanceUID, imageSeriesUID);
@@ -903,8 +903,8 @@ void Inspection::saveDiconde(
           DcmDataset *dataset = fileformat.getDataset();
       
           // Add general metadata
-          dataset->putAndInsertString(DCM_PatientID, part_id.c_str());
-          dataset->putAndInsertString(DCM_PatientName, part_name.c_str());
+          dataset->putAndInsertString(DCM_ComponentIDNumber, component_id.c_str());
+          dataset->putAndInsertString(DCM_Component, component_name.c_str());
           dataset->putAndInsertString(DCM_SOPClassUID, UID_SecondaryCaptureImageStorage);        
           dataset->putAndInsertString(DCM_SOPInstanceUID, depthSOPUID);
           dataset->putAndInsertString(DCM_SeriesInstanceUID, depthSeriesUID);
@@ -1051,8 +1051,8 @@ void Inspection::saveDiconde(
       dataset->putAndInsertUint16Array(DCM_SurfacePointPresentationValueData, &point_cloud_values[0], point_cloud_values.size());
 
       // Store metadata
-      dataset->putAndInsertString(DCM_PatientID, part_id.c_str());
-      dataset->putAndInsertString(DCM_PatientName, part_name.c_str());
+      dataset->putAndInsertString(DCM_ComponentIDNumber, component_id.c_str());
+      dataset->putAndInsertString(DCM_Component, component_name.c_str());
       dataset->putAndInsertString(DCM_Modality, "OT");
       dataset->putAndInsertString(DCM_SeriesDescription, "Sparse Point Measurements");
       dataset->putAndInsertString(DCM_SOPClassUID, UID_SurfaceScanPointCloudStorage);

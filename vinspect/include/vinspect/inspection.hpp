@@ -263,15 +263,15 @@ public:
   /**
    * Stores the current inspection data in a DICONDE files
    * @param save_folder Path where the inspection should be stored
-   * @param part_name Name of the inspected part
-   * @param part_id Id of the inspected part
+   * @param component_name Name of the inspected component
+   * @param component_id Id of the inspected component
    * @param sparse_value_scaling_factor Rescale decimal sparse measurements for integer cast
    * @param sparse_value_dim Name of the sparse data dimension that should be exported
    */
   void saveDiconde(
     const fs::path & save_folder,
-    const std::string & part_name,
-    const std::string & part_id,
+    const std::string & component_name,
+    const std::string & component_id,
     const double sparse_value_scaling_factor = 100.0,
     const std::string & sparse_value_dim = ""
   );
