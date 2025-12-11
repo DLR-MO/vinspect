@@ -1072,17 +1072,13 @@ void Inspection::saveDiconde(const std::string & folder_path)
       
       // Store coordinates
       {
-        DcmSequenceOfItems *point_cloud_container = new DcmSequenceOfItems(DCM_SurfacePointsSequence);  // Not really a sequence...
-        {
-          DcmItem *point_cloud = new DcmItem();
-          point_cloud->putAndInsertUint32(DCM_NumberOfSurfacePoints, getSparseDataCount()); 
-          point_cloud->putAndInsertFloat32Array(
-            DCM_PointCoordinatesData, 
-            &point_cloud_coords[0], 
-            point_cloud_coords.size());
-          point_cloud_container->append(point_cloud);
-        }
-        dataset->insert(point_cloud_container, OFTrue);
+        DcmItem *point_cloud = new DcmItem();
+        point_cloud->putAndInsertUint32(DCM_NumberOfSurfacePoints, getSparseDataCount()); 
+        point_cloud->putAndInsertFloat32Array(
+          DCM_PointCoordinatesData, 
+          &point_cloud_coords[0], 
+          point_cloud_coords.size());
+        dataset->insertSequenceItem(DCM_SurfacePointsSequence, point_cloud);
       }
       // Store values
       dataset->putAndInsertUint16Array(DCM_SurfacePointPresentationValueData, &point_cloud_values[0], point_cloud_values.size());
@@ -1107,15 +1103,11 @@ void Inspection::saveDiconde(const std::string & folder_path)
       }
 
       {
-        DcmSequenceOfItems *scan_acq_type_container = new DcmSequenceOfItems(DCM_SurfaceScanAcquisitionTypeCodeSequence);
-        {
-          DcmItem *scan_acq_type = new DcmItem();
-          scan_acq_type->putAndInsertString(DCM_CodingSchemeDesignator, "DCM");  // TODO replace with diconde equvalent
-          scan_acq_type->putAndInsertString(DCM_CodeMeaning, "Point Cloud Algorithmic");  // TODO better data type
-          scan_acq_type->putAndInsertString(DCM_CodingSchemeDesignator, "114208");
-          scan_acq_type_container->append(scan_acq_type);
-        }
-        dataset->insert(scan_acq_type_container);
+        DcmItem *scan_acq_type = new DcmItem();
+        scan_acq_type->putAndInsertString(DCM_CodingSchemeDesignator, "DCM");  // TODO replace with diconde equvalent
+        scan_acq_type->putAndInsertString(DCM_CodeMeaning, "Point Cloud Algorithmic");  // TODO better data type
+        scan_acq_type->putAndInsertString(DCM_CodingSchemeDesignator, "114208");
+        dataset->insertSequenceItem(DCM_SurfaceScanAcquisitionTypeCodeSequence, scan_acq_type);
       }
 
       // Write to disk
