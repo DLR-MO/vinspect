@@ -16,6 +16,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/AreaData.msg"
   "msg/Status.msg"
   "srv/StartReconstruction.srv"
+  "srv/SaveDICONDE.srv"
   DEPENDENCIES std_msgs geometry_msgs
 )
 

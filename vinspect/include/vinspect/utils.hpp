@@ -21,6 +21,8 @@
 
 #include <opencv2/opencv.hpp>
 
+#include "dcmtk/dcmdata/dctk.h"
+
 #include "vinspect/pose_tree/octree.h"
 #include "dense.pb.h"
 
@@ -28,6 +30,11 @@
 
 namespace vinspect
 {
+
+// Mapping DICONDE -> DICOM
+#define DCM_Component DCM_PatientName
+#define DCM_ComponentIDNumber DCM_PatientID
+
 
 open3d::geometry::TriangleMesh meshFromPath(const std::string & mesh_file_path);
 

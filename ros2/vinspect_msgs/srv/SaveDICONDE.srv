@@ -1,0 +1,6 @@
+# Saves the inspection
+string path
+string component_name
+string component_id
+---
+bool success
