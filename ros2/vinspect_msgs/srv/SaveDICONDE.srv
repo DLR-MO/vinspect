@@ -1,0 +1,4 @@
+# Saves the inspection
+string path
+---
+bool success

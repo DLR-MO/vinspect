@@ -59,9 +59,6 @@ Inspection::Inspection(const std::string & file_path)
     reinitializeTSDF(0.01); // TODO Store the original value
   }
 
-  // Test the export
-  saveDiconde("/home/vahl_fl/colcon_ws");
-
   std::cout << "Data loaded." << std::endl;
 }
 
@@ -910,7 +907,7 @@ void Inspection::saveDiconde(const std::string & folder_path)
           OFCondition cond = fileformat.saveFile(dcm_current_image_path.c_str(), EXS_LittleEndianExplicit);
           if (!cond.good())
           {
-              std::cerr << "Error saving DICOM file: " << cond.text() << std::endl;
+              std::cerr << "Error saving file: " << cond.text() << std::endl;
           }  
         }
     
@@ -990,7 +987,7 @@ void Inspection::saveDiconde(const std::string & folder_path)
           OFCondition cond = fileformat.saveFile(dcm_current_image_path.c_str(), EXS_LittleEndianExplicit);
           if (!cond.good())
           {
-              std::cerr << "Error saving DICOM file: " << cond.text() << std::endl;
+              std::cerr << "Error saving file: " << cond.text() << std::endl;
           }  
         }
         img_idx++;
@@ -1010,18 +1007,29 @@ void Inspection::saveDiconde(const std::string & folder_path)
       const auto sparse_value_scaling_factor = 1.0; // To convert from float to uint8
       const auto sparse_value_dim = 0;  // To select the dimension that should be exported
 
-      char sparseSeriesUid[100], sop_uid[100];
+      char sparseSeriesUid[100], sop_uid[100], frameOfReferenceUID[100];
       dcmGenerateUniqueIdentifier(sparseSeriesUid);
       dcmGenerateUniqueIdentifier(sop_uid, SITE_INSTANCE_UID_ROOT);
+      dcmGenerateUniqueIdentifier(frameOfReferenceUID);
 
       DcmFileFormat fileformat;
       DcmDataset *dataset = fileformat.getDataset();
 
       dataset->putAndInsertString(DCM_PatientID, patient_id);
       dataset->putAndInsertString(DCM_PatientName, patient_name);
+
       dataset->putAndInsertString(DCM_Modality, "OT");
       dataset->putAndInsertString(DCM_SeriesDescription, "Sparse Point Measurements");
-      
+      dataset->putAndInsertString(DCM_SOPClassUID, UID_SurfaceScanPointCloudStorage);
+      dataset->putAndInsertString(DCM_StudyInstanceUID, studyInstanceUID);
+      dataset->putAndInsertString(DCM_FrameOfReferenceUID, frameOfReferenceUID);
+
+      // Device
+      dataset->putAndInsertString(DCM_Manufacturer, "DLR");
+      dataset->putAndInsertString(DCM_ManufacturerModelName, "VINSPECT");
+      dataset->putAndInsertString(DCM_DeviceSerialNumber, "0");
+      dataset->putAndInsertString(DCM_SoftwareVersions, GIT_COMMIT_HASH);
+
       dataset->putAndInsertString(DCM_SOPInstanceUID, sop_uid);
       dataset->putAndInsertString(DCM_SeriesInstanceUID, sparseSeriesUid);
       dataset->putAndInsertString(DCM_SeriesDescription, "Sparse Measurements");
@@ -1116,7 +1124,7 @@ void Inspection::saveDiconde(const std::string & folder_path)
       OFCondition cond = fileformat.saveFile(dcm_current_image_path.c_str(), EXS_LittleEndianExplicit);
       if (!cond.good())
       {
-          std::cerr << "Error saving DICOM file: " << cond.text() << std::endl;
+          std::cerr << "Error saving file: " << cond.text() << std::endl;
       }  
     }
   }

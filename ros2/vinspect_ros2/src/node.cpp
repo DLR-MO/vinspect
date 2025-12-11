@@ -43,6 +43,7 @@
 #include "vinspect_msgs/msg/status.hpp"
 
 #include "vinspect_msgs/srv/start_reconstruction.hpp"
+#include "vinspect_msgs/srv/save_diconde.hpp"
 
 #include <vinspect_ros2/vinspect_parameters.hpp> 
 
@@ -219,6 +220,11 @@ class VinspectNode : public rclcpp::Node
     dense_req_sub = this->create_subscription<std_msgs::msg::Empty>(
       "vinspect/dense_data_req", latching_qos,
       std::bind(&VinspectNode::denseDataReq, this, std::placeholders::_1), options3);
+
+    save_diconde_service_ = this->create_service<vinspect_msgs::srv::SaveDICONDE>(
+        "/diconde/save",
+        std::bind(
+          &VinspectNode::saveDICONDE, this, std::placeholders::_1, std::placeholders::_2));
 
     rclcpp::SubscriptionOptions options4;
     options4.callback_group = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
@@ -762,18 +768,6 @@ private:
     }
   }
 
-  std::string removeWordFromString(const std::string str, const std::string word)
-  {
-    std::string to_remove = word;
-    std::string remove_from = str;
-    std::string result;
-    auto n = remove_from.find(to_remove);
-    if (n != std::string::npos) {
-      result = remove_from.erase(n, to_remove.length());
-    }
-    return result;
-  }
-
   /**
    * Converts from transformStamped message to Eigen::Matrix4d transform matrix.
    * @param transformed_pose transformStamped message
@@ -832,6 +826,14 @@ private:
     dense_pause_ = true;
   }
 
+  void saveDICONDE(
+    const std::shared_ptr<vinspect_msgs::srv::SaveDICONDE::Request> request,
+    std::shared_ptr<vinspect_msgs::srv::SaveDICONDE::Response> response) 
+  {
+    inspection_->saveDiconde(request->path);
+    response->success = true;
+  }
+
   std::unique_ptr<vinspect::Inspection> inspection_{nullptr};
   std::unique_ptr<vinspect::SparseMesh> sparse_mesh_{nullptr};
 
@@ -881,6 +883,7 @@ private:
 
   rclcpp::Service<vinspect_msgs::srv::StartReconstruction>::SharedPtr start_reconstruction_service_;
   rclcpp::Service<std_srvs::srv::Empty>::SharedPtr stop_reconstruction_service_;
+  rclcpp::Service<vinspect_msgs::srv::SaveDICONDE>::SharedPtr save_diconde_service_;
 };
 
 int main(int argc, char ** argv)
