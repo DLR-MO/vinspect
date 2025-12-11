@@ -1004,7 +1004,7 @@ void Inspection::saveDiconde(const std::string & folder_path)
     {
       std::cout << "Skipping sparse data saving as no sparse data is available!" << std::endl;
     } else {
-      const auto sparse_value_scaling_factor = 1.0; // To convert from float to uint8
+      const auto sparse_value_scaling_factor = 100.0; // To convert from float to int
       const auto sparse_value_dim = 0;  // To select the dimension that should be exported
 
       char sparseSeriesUid[100], sop_uid[100], frameOfReferenceUID[100];
@@ -1036,7 +1036,7 @@ void Inspection::saveDiconde(const std::string & folder_path)
       
       // Extract data
       std::vector<float> point_cloud_coords;
-      std::vector<u_int8_t> point_cloud_values;
+      std::vector<u_int16_t> point_cloud_values;
       point_cloud_coords.reserve(getSparseDataCount() * 3);
       point_cloud_values.reserve(getSparseDataCount());
 
@@ -1061,7 +1061,7 @@ void Inspection::saveDiconde(const std::string & folder_path)
           std::clamp(
             sample["value"][sparse_value_dim].get<double>() * sparse_value_scaling_factor,
             0.0,
-            255.0
+            static_cast<double>(std::numeric_limits<u_int16_t>::max())
           )
         );
 
@@ -1070,7 +1070,7 @@ void Inspection::saveDiconde(const std::string & folder_path)
         last_timestamp = std::max(last_timestamp, timestamp);
       }
       
-      // Sore coordinates
+      // Store coordinates
       {
         DcmSequenceOfItems *point_cloud_container = new DcmSequenceOfItems(DCM_SurfacePointsSequence);  // Not really a sequence...
         {
@@ -1085,7 +1085,7 @@ void Inspection::saveDiconde(const std::string & folder_path)
         dataset->insert(point_cloud_container, OFTrue);
       }
       // Store values
-      dataset->putAndInsertUint8Array(DCM_SurfacePointPresentationValueData, &point_cloud_values[0], point_cloud_values.size());
+      dataset->putAndInsertUint16Array(DCM_SurfacePointPresentationValueData, &point_cloud_values[0], point_cloud_values.size());
 
       // Store metadata
       dataset->putAndInsertFloat64(DCM_ShotDurationTime, last_timestamp - first_timestamp);
