@@ -778,6 +778,34 @@ void Inspection::saveDiconde(const std::string & folder_path)
   
   char studyInstanceUID[100];
   dcmGenerateUniqueIdentifier(studyInstanceUID);
+
+  auto to_dcm_time_format = [](std::chrono::system_clock::time_point tp){
+      // Convert to C API
+      auto tp_time_t = std::chrono::system_clock::to_time_t(tp);
+
+      // Create a stringstream for formatting
+      std::stringstream ss;
+
+      // Format date and time
+      ss << std::put_time(std::localtime(&tp_time_t), "%Y%m%d%H%M%S");
+
+      // Get the fractional part of seconds
+      auto duration = tp.time_since_epoch();
+      auto fractional_seconds = std::chrono::duration_cast<std::chrono::microseconds>(duration) % 1000000;
+      ss << '.' << std::setfill('0') << std::setw(6) << fractional_seconds.count();
+
+      // Get the timezone offset
+      auto local_time = *std::localtime(&tp_time_t);
+      int hours_offset = local_time.tm_gmtoff / 3600;
+      int minutes_offset = (local_time.tm_gmtoff % 3600) / 60;
+
+      // Add timezone offset
+      ss << (hours_offset >= 0 ? "+" : "-")
+        << std::setfill('0') << std::setw(2) << abs(hours_offset)
+        << std::setfill('0') << std::setw(2) << abs(minutes_offset);
+
+      return ss.str();
+  };
   
   // Dense export
   if (getDenseUsage())
@@ -1022,7 +1050,12 @@ void Inspection::saveDiconde(const std::string & folder_path)
 
         // Store point value
         point_cloud_values.push_back(
-          sample["value"][sparse_value_dim].get<double>() * sparse_value_scaling_factor);
+          std::clamp(
+            sample["value"][sparse_value_dim].get<double>() * sparse_value_scaling_factor,
+            0.0,
+            255.0
+          )
+        );
 
         double timestamp = sample["timestamp"];
         first_timestamp = std::min(first_timestamp, timestamp);
@@ -1048,13 +1081,20 @@ void Inspection::saveDiconde(const std::string & folder_path)
 
       // Store metadata
       dataset->putAndInsertFloat64(DCM_ShotDurationTime, last_timestamp - first_timestamp);
-      dataset->putAndInsertString(DCM_AcquisitionDateTime, "YYYYMMDDHHMMSS.FFFFFF&ZZXX"); // TODO real date time
+
+      std::chrono::system_clock::time_point tp{
+        std::chrono::duration_cast<std::chrono::microseconds>(
+          std::chrono::duration<double>(first_timestamp)
+        )
+      };
+      auto time_string = to_dcm_time_format(tp);
+      dataset->putAndInsertString(DCM_AcquisitionDateTime, time_string.c_str());
       dataset->putAndInsertString(DCM_AcquisitionNumber, "1");
       dataset->putAndInsertString(DCM_InstanceNumber, "1");
       
       {
         // Can be left empty, but must be present
-        DcmSequenceOfItems *scan_mode_dummy = new DcmSequenceOfItems(DCM_SurfaceScanModeCodeSequence)
+        DcmSequenceOfItems *scan_mode_dummy = new DcmSequenceOfItems(DCM_SurfaceScanModeCodeSequence);
         dataset->insert(scan_mode_dummy);
       }
 
