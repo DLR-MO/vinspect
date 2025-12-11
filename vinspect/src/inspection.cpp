@@ -770,251 +770,316 @@ void Inspection::saveDiconde(const std::string & folder_path)
   // Create Folder
   const fs::path save_folder(folder_path);
   const fs::path diconde_folder = save_folder / "diconde";
-  const fs::path image_folder = diconde_folder / "images"; 
-
   std::filesystem::create_directory(diconde_folder);
-  std::filesystem::create_directory(image_folder);
-
-
+  
   // Create global metadata    // TODO rename to DICONDE names
   auto patient_name = "Doe^John"; // TODO make parameter
   auto patient_id = "0000";
-
+  
   char studyInstanceUID[100];
   dcmGenerateUniqueIdentifier(studyInstanceUID);
   
   // Dense export
+  if (getDenseUsage())
   {
-    // TODO maybe a series for each sensor
-    char imageSeriesUID[100], depthSeriesUID[100];
-    dcmGenerateUniqueIdentifier(imageSeriesUID);
-    dcmGenerateUniqueIdentifier(depthSeriesUID);
-
-    // Go through all images
-    std::size_t img_idx = 0;
-    auto it = std::unique_ptr<rocksdb::Iterator>(db_->NewIterator(rocksdb::ReadOptions()));
-    for (it->Seek(DB_KEY_DENSE_DATA_PREFIX);
-      it->Valid() && it->key().starts_with(DB_KEY_DENSE_DATA_PREFIX); it->Next())
+    // Check if we got any data
+    if (getDenseDataCount() == 0)
     {
-      // Decode data
-      const auto sample = it->value().ToString();
-      Dense retrievedEntry;
-      if (!retrievedEntry.ParseFromString(sample)) {
-        throw std::runtime_error("Failed to parse dense data");
-      }
-      
-      // Get sensor information
-      const auto sensor = getDenseSensor(retrievedEntry.sensor_id());
-      
-      // Create UIDs
-      char imageSOPUID[100], depthSOPUID[100], frameOfReferenceUID[100];
-      dcmGenerateUniqueIdentifier(imageSOPUID, SITE_INSTANCE_UID_ROOT);
-      dcmGenerateUniqueIdentifier(depthSOPUID, SITE_INSTANCE_UID_ROOT);
-      dcmGenerateUniqueIdentifier(frameOfReferenceUID);
-
-      // Write RGB Image
-      {  
-        DcmFileFormat fileformat;
-        DcmDataset *dataset = fileformat.getDataset();
-    
-        dataset->putAndInsertString(DCM_PatientID, patient_id);
-        dataset->putAndInsertString(DCM_PatientName, patient_name);
-        dataset->putAndInsertString(DCM_SOPClassUID, UID_SecondaryCaptureImageStorage);        
-        dataset->putAndInsertString(DCM_SOPInstanceUID, imageSOPUID);
-        dataset->putAndInsertString(DCM_SeriesInstanceUID, imageSeriesUID);
-        dataset->putAndInsertString(DCM_SeriesDescription, "Dense RGB Image");
-        dataset->putAndInsertString(DCM_Modality, "OT");   // Other
-        dataset->putAndInsertString(DCM_ConversionType, "DV");
-        dataset->putAndInsertString(DCM_StudyInstanceUID, studyInstanceUID);
-        dataset->putAndInsertString(DCM_FrameOfReferenceUID, frameOfReferenceUID);
-
-        // Cross reference the depth
-        {
-          DcmItem *depthReference = new DcmItem();
-          depthReference->putAndInsertString(DCM_ReferencedSOPClassUID, UID_SecondaryCaptureImageStorage);
-          depthReference->putAndInsertString(DCM_ReferencedSOPInstanceUID, depthSOPUID);
-          {
-            DcmItem *purposeReferenceCode = new DcmItem();
-            purposeReferenceCode->putAndInsertString(DCM_CodeValue, "121313");
-            purposeReferenceCode->putAndInsertString(DCM_CodingSchemeDesignator, "DCM");
-            purposeReferenceCode->putAndInsertString(DCM_CodeMeaning, "Other partial views");  // Maybe find a better code
-            depthReference->insertSequenceItem(DCM_PurposeOfReferenceCodeSequence, purposeReferenceCode);
-          }
-          dataset->insertSequenceItem(DCM_ReferencedImageSequence, depthReference);
-        }
-    
-        // ------------------------------------------------------------------
-        // Set the image attributes
-        // ------------------------------------------------------------------
-        dataset->putAndInsertUint16(DCM_Rows, sensor.getHeight());
-        dataset->putAndInsertUint16(DCM_Columns, sensor.getWidth());
-        dataset->putAndInsertUint16(DCM_SamplesPerPixel, 3);            // RGB
-        dataset->putAndInsertString(DCM_PhotometricInterpretation, "RGB");
-        dataset->putAndInsertUint16(DCM_BitsAllocated, 8);              // 8‑bit per channel
-        dataset->putAndInsertUint16(DCM_BitsStored, 8);
-        dataset->putAndInsertUint16(DCM_HighBit, 7);
-        dataset->putAndInsertUint16(DCM_PixelRepresentation, 0);       // unsigned
-        dataset->putAndInsertUint16(DCM_PlanarConfiguration, 0);        // interleaved RGB
-        dataset->putAndInsertString(DCM_NumberOfFrames, "1");
-        dataset->putAndInsertUint16(DCM_SmallestImagePixelValue, 0);
-        dataset->putAndInsertUint16(DCM_LargestImagePixelValue, 255);
-    
-    
-        // ------------------------------------------------------------------
-        // Store the raw pixel data
-        // ------------------------------------------------------------------
-        dataset->putAndInsertUint8Array(
-          DCM_PixelData, 
-          reinterpret_cast<const std::uint8_t*>(
-            retrievedEntry.mutable_color_image()->data()
-          ), 
-          retrievedEntry.mutable_color_image()->size());
-          
-        // Write to disk
-        fs::path dcm_current_image_path = image_folder / fmt::format("{:0>{}}.dcm", img_idx, 12);
-    
-        OFCondition cond = fileformat.saveFile(dcm_current_image_path.c_str(), EXS_LittleEndianExplicit);
-        if (!cond.good())
-        {
-            std::cerr << "Error saving DICOM file: " << cond.text() << std::endl;
-        }  
-      }
+      std::cout << "No dense data available, skipping dense export" << std::endl;
+    } else {
+      // Create directory structure
+      const fs::path image_folder = diconde_folder / "images"; 
+      std::filesystem::create_directory(image_folder);
   
-      // Write Depth Image
+      // TODO maybe a series for each sensor
+      char imageSeriesUID[100], depthSeriesUID[100];
+      dcmGenerateUniqueIdentifier(imageSeriesUID);
+      dcmGenerateUniqueIdentifier(depthSeriesUID);
+  
+      // Go through all images
+      std::size_t img_idx = 0;
+      auto it = std::unique_ptr<rocksdb::Iterator>(db_->NewIterator(rocksdb::ReadOptions()));
+      for (it->Seek(DB_KEY_DENSE_DATA_PREFIX);
+        it->Valid() && it->key().starts_with(DB_KEY_DENSE_DATA_PREFIX); it->Next())
       {
-        DcmFileFormat fileformat;
-        DcmDataset *dataset = fileformat.getDataset();
-    
-        dataset->putAndInsertString(DCM_PatientID, patient_id);
-        dataset->putAndInsertString(DCM_PatientName, patient_name);
-        dataset->putAndInsertString(DCM_SOPClassUID, UID_SecondaryCaptureImageStorage);        
-        dataset->putAndInsertString(DCM_SOPInstanceUID, depthSOPUID);
-        dataset->putAndInsertString(DCM_SeriesInstanceUID, depthSeriesUID);
-        dataset->putAndInsertString(DCM_SeriesDescription, "Dense Depth Image");
-        dataset->putAndInsertString(DCM_Modality, "OT");   // Other
-        dataset->putAndInsertString(DCM_ConversionType, "DV");
-        dataset->putAndInsertString(DCM_StudyInstanceUID, studyInstanceUID);
-        dataset->putAndInsertString(DCM_FrameOfReferenceUID, frameOfReferenceUID);
-
-        // Cross reference the RGB
-        {
-          DcmItem *rgbReference = new DcmItem();
-          rgbReference->putAndInsertString(DCM_ReferencedSOPClassUID, UID_SecondaryCaptureImageStorage);
-          rgbReference->putAndInsertString(DCM_ReferencedSOPInstanceUID, imageSOPUID);
+        // Decode data
+        const auto sample = it->value().ToString();
+        Dense retrievedEntry;
+        if (!retrievedEntry.ParseFromString(sample)) {
+          throw std::runtime_error("Failed to parse dense data");
+        }
+        
+        // Get sensor information
+        const auto sensor = getDenseSensor(retrievedEntry.sensor_id());
+        
+        // Create UIDs
+        char imageSOPUID[100], depthSOPUID[100], frameOfReferenceUID[100];
+        dcmGenerateUniqueIdentifier(imageSOPUID, SITE_INSTANCE_UID_ROOT);
+        dcmGenerateUniqueIdentifier(depthSOPUID, SITE_INSTANCE_UID_ROOT);
+        dcmGenerateUniqueIdentifier(frameOfReferenceUID);
+  
+        // Write RGB Image
+        {  
+          DcmFileFormat fileformat;
+          DcmDataset *dataset = fileformat.getDataset();
+      
+          dataset->putAndInsertString(DCM_PatientID, patient_id);
+          dataset->putAndInsertString(DCM_PatientName, patient_name);
+          dataset->putAndInsertString(DCM_SOPClassUID, UID_SecondaryCaptureImageStorage);        
+          dataset->putAndInsertString(DCM_SOPInstanceUID, imageSOPUID);
+          dataset->putAndInsertString(DCM_SeriesInstanceUID, imageSeriesUID);
+          dataset->putAndInsertString(DCM_SeriesDescription, "Dense RGB Image");
+          dataset->putAndInsertString(DCM_Modality, "OT");   // Other
+          dataset->putAndInsertString(DCM_ConversionType, "DV");
+          dataset->putAndInsertString(DCM_StudyInstanceUID, studyInstanceUID);
+          dataset->putAndInsertString(DCM_FrameOfReferenceUID, frameOfReferenceUID);
+  
+          // Cross reference the depth
           {
-            DcmItem *purposeReferenceCode = new DcmItem();
-            purposeReferenceCode->putAndInsertString(DCM_CodeValue, "121313");
-            purposeReferenceCode->putAndInsertString(DCM_CodingSchemeDesignator, "DCM");
-            purposeReferenceCode->putAndInsertString(DCM_CodeMeaning, "Other partial views");  // Maybe find a better code
-            rgbReference->insertSequenceItem(DCM_PurposeOfReferenceCodeSequence, purposeReferenceCode);
+            DcmItem *depthReference = new DcmItem();
+            depthReference->putAndInsertString(DCM_ReferencedSOPClassUID, UID_SecondaryCaptureImageStorage);
+            depthReference->putAndInsertString(DCM_ReferencedSOPInstanceUID, depthSOPUID);
+            {
+              DcmItem *purposeReferenceCode = new DcmItem();
+              purposeReferenceCode->putAndInsertString(DCM_CodeValue, "121313");
+              purposeReferenceCode->putAndInsertString(DCM_CodingSchemeDesignator, "DCM");
+              purposeReferenceCode->putAndInsertString(DCM_CodeMeaning, "Other partial views");  // Maybe find a better code
+              depthReference->insertSequenceItem(DCM_PurposeOfReferenceCodeSequence, purposeReferenceCode);
+            }
+            dataset->insertSequenceItem(DCM_ReferencedImageSequence, depthReference);
           }
-          dataset->insertSequenceItem(DCM_ReferencedImageSequence, rgbReference);
-        }
-
-
-    
-        // ------------------------------------------------------------------
-        // Set the image attributes
-        // ------------------------------------------------------------------
-        dataset->putAndInsertUint16(DCM_Rows, sensor.getHeight());
-        dataset->putAndInsertUint16(DCM_Columns, sensor.getWidth());
-        dataset->putAndInsertUint16(DCM_SamplesPerPixel, 1);            // Depth
-        dataset->putAndInsertString(DCM_PhotometricInterpretation, "MONOCHROME2");
-        dataset->putAndInsertUint16(DCM_SmallestImagePixelValue, 0);
-        dataset->putAndInsertUint16(DCM_PixelRepresentation, 0);  // unsigned
-  
-        if (retrievedEntry.depth_dtype() == CV_16UC1) {
-          dataset->putAndInsertUint16(DCM_BitsAllocated, 16);
-          dataset->putAndInsertUint16(DCM_BitsStored, 16);  // TODO check if the alignment etc are correct
-          dataset->putAndInsertUint16(DCM_HighBit, 15);
-  
-          dataset->putAndInsertUint16Array(
-            DCM_PixelData,
-            reinterpret_cast<const std::uint16_t*>(
-              retrievedEntry.mutable_depth_image()->data()
+      
+          // ------------------------------------------------------------------
+          // Set the image attributes
+          // ------------------------------------------------------------------
+          dataset->putAndInsertUint16(DCM_Rows, sensor.getHeight());
+          dataset->putAndInsertUint16(DCM_Columns, sensor.getWidth());
+          dataset->putAndInsertUint16(DCM_SamplesPerPixel, 3);            // RGB
+          dataset->putAndInsertString(DCM_PhotometricInterpretation, "RGB");
+          dataset->putAndInsertUint16(DCM_BitsAllocated, 8);              // 8‑bit per channel
+          dataset->putAndInsertUint16(DCM_BitsStored, 8);
+          dataset->putAndInsertUint16(DCM_HighBit, 7);
+          dataset->putAndInsertUint16(DCM_PixelRepresentation, 0);       // unsigned
+          dataset->putAndInsertUint16(DCM_PlanarConfiguration, 0);        // interleaved RGB
+          dataset->putAndInsertString(DCM_NumberOfFrames, "1");
+          dataset->putAndInsertUint16(DCM_SmallestImagePixelValue, 0);
+          dataset->putAndInsertUint16(DCM_LargestImagePixelValue, 255);
+      
+      
+          // ------------------------------------------------------------------
+          // Store the raw pixel data
+          // ------------------------------------------------------------------
+          dataset->putAndInsertUint8Array(
+            DCM_PixelData, 
+            reinterpret_cast<const std::uint8_t*>(
+              retrievedEntry.mutable_color_image()->data()
             ), 
-            retrievedEntry.mutable_depth_image()->size()
-          );
-        } else if (retrievedEntry.depth_dtype() == CV_32FC1)
-        {
-          dataset->putAndInsertUint16(DCM_BitsAllocated, 32);
-          dataset->putAndInsertUint16(DCM_BitsStored, 32);
-          dataset->putAndInsertUint16(DCM_HighBit, 31);
-  
-          dataset->putAndInsertFloat32Array(
-            DCM_FloatPixelData,
-            reinterpret_cast<const float*>(
-              retrievedEntry.mutable_depth_image()->data()
-            ), 
-            retrievedEntry.mutable_depth_image()->size());
-        } else {
-          std::runtime_error("Unsupported depth data type");
+            retrievedEntry.mutable_color_image()->size());
+            
+          // Write to disk
+          fs::path dcm_current_image_path = image_folder / fmt::format("{:0>{}}.dcm", img_idx, 12);
+      
+          OFCondition cond = fileformat.saveFile(dcm_current_image_path.c_str(), EXS_LittleEndianExplicit);
+          if (!cond.good())
+          {
+              std::cerr << "Error saving DICOM file: " << cond.text() << std::endl;
+          }  
         }
     
-          
-        // Write to disk
-        fs::path dcm_current_image_path = image_folder / fmt::format("{:0>{}}_depth.dcm", img_idx, 12);
-    
-        OFCondition cond = fileformat.saveFile(dcm_current_image_path.c_str(), EXS_LittleEndianExplicit);
-        if (!cond.good())
+        // Write Depth Image
         {
-            std::cerr << "Error saving DICOM file: " << cond.text() << std::endl;
-        }  
+          DcmFileFormat fileformat;
+          DcmDataset *dataset = fileformat.getDataset();
+      
+          dataset->putAndInsertString(DCM_PatientID, patient_id);
+          dataset->putAndInsertString(DCM_PatientName, patient_name);
+          dataset->putAndInsertString(DCM_SOPClassUID, UID_SecondaryCaptureImageStorage);        
+          dataset->putAndInsertString(DCM_SOPInstanceUID, depthSOPUID);
+          dataset->putAndInsertString(DCM_SeriesInstanceUID, depthSeriesUID);
+          dataset->putAndInsertString(DCM_SeriesDescription, "Dense Depth Image");
+          dataset->putAndInsertString(DCM_Modality, "OT");   // Other
+          dataset->putAndInsertString(DCM_ConversionType, "DV");
+          dataset->putAndInsertString(DCM_StudyInstanceUID, studyInstanceUID);
+          dataset->putAndInsertString(DCM_FrameOfReferenceUID, frameOfReferenceUID);
+  
+          // Cross reference the RGB
+          {
+            DcmItem *rgbReference = new DcmItem();
+            rgbReference->putAndInsertString(DCM_ReferencedSOPClassUID, UID_SecondaryCaptureImageStorage);
+            rgbReference->putAndInsertString(DCM_ReferencedSOPInstanceUID, imageSOPUID);
+            {
+              DcmItem *purposeReferenceCode = new DcmItem();
+              purposeReferenceCode->putAndInsertString(DCM_CodeValue, "121313");
+              purposeReferenceCode->putAndInsertString(DCM_CodingSchemeDesignator, "DCM");
+              purposeReferenceCode->putAndInsertString(DCM_CodeMeaning, "Other partial views");  // Maybe find a better code
+              rgbReference->insertSequenceItem(DCM_PurposeOfReferenceCodeSequence, purposeReferenceCode);
+            }
+            dataset->insertSequenceItem(DCM_ReferencedImageSequence, rgbReference);
+          }
+      
+          // ------------------------------------------------------------------
+          // Set the image attributes
+          // ------------------------------------------------------------------
+          dataset->putAndInsertUint16(DCM_Rows, sensor.getHeight());
+          dataset->putAndInsertUint16(DCM_Columns, sensor.getWidth());
+          dataset->putAndInsertUint16(DCM_SamplesPerPixel, 1);            // Depth
+          dataset->putAndInsertString(DCM_PhotometricInterpretation, "MONOCHROME2");
+          dataset->putAndInsertUint16(DCM_SmallestImagePixelValue, 0);
+          dataset->putAndInsertUint16(DCM_PixelRepresentation, 0);  // unsigned
+    
+          if (retrievedEntry.depth_dtype() == CV_16UC1) {
+            dataset->putAndInsertUint16(DCM_BitsAllocated, 16);
+            dataset->putAndInsertUint16(DCM_BitsStored, 16);  // TODO check if the alignment etc are correct
+            dataset->putAndInsertUint16(DCM_HighBit, 15);
+    
+            dataset->putAndInsertUint16Array(
+              DCM_PixelData,
+              reinterpret_cast<const std::uint16_t*>(
+                retrievedEntry.mutable_depth_image()->data()
+              ), 
+              retrievedEntry.mutable_depth_image()->size()
+            );
+          } else if (retrievedEntry.depth_dtype() == CV_32FC1)
+          {
+            dataset->putAndInsertUint16(DCM_BitsAllocated, 32);
+            dataset->putAndInsertUint16(DCM_BitsStored, 32);
+            dataset->putAndInsertUint16(DCM_HighBit, 31);
+    
+            dataset->putAndInsertFloat32Array(
+              DCM_FloatPixelData,
+              reinterpret_cast<const float*>(
+                retrievedEntry.mutable_depth_image()->data()
+              ), 
+              retrievedEntry.mutable_depth_image()->size());
+          } else {
+            std::runtime_error("Unsupported depth data type");
+          }
+      
+            
+          // Write to disk
+          fs::path dcm_current_image_path = image_folder / fmt::format("{:0>{}}_depth.dcm", img_idx, 12);
+      
+          OFCondition cond = fileformat.saveFile(dcm_current_image_path.c_str(), EXS_LittleEndianExplicit);
+          if (!cond.good())
+          {
+              std::cerr << "Error saving DICOM file: " << cond.text() << std::endl;
+          }  
+        }
+        img_idx++;
       }
-      img_idx++;
     }
   }
 
 
   // Save sparse data
+  if (getSparseUsage())
   {
-    char sparseSeriesUid[100], sop_uid[100];
-    dcmGenerateUniqueIdentifier(sparseSeriesUid);
-    dcmGenerateUniqueIdentifier(sop_uid, SITE_INSTANCE_UID_ROOT);
-
-    DcmFileFormat fileformat;
-    DcmDataset *dataset = fileformat.getDataset();
-
-    dataset->putAndInsertString(DCM_PatientID, patient_id);
-    dataset->putAndInsertString(DCM_PatientName, patient_name);
-    dataset->putAndInsertString(DCM_Modality, "OT");
-    dataset->putAndInsertString(DCM_SeriesDescription, "Sparse Point Measurements");
-    
-    dataset->putAndInsertString(DCM_SOPInstanceUID, sop_uid);
-    dataset->putAndInsertString(DCM_SeriesInstanceUID, sparseSeriesUid);
-    dataset->putAndInsertString(DCM_SeriesDescription, "Dense Depth Image");
-
-    // TODO timestamps
-
-    std::size_t sample_idx = 0;
-    auto it = std::unique_ptr<rocksdb::Iterator>(db_->NewIterator(rocksdb::ReadOptions()));
-    for (it->Seek(DB_KEY_SPARSE_DATA_PREFIX);
-      it->Valid() && it->key().starts_with(DB_KEY_SPARSE_DATA_PREFIX); it->Next())
+    // Check if we have any data
+    if (getSparseDataCount() == 0)
     {
-      json sample = json::parse(it->value().ToStringView());
+      std::cout << "Skipping sparse data saving as no sparse data is available!" << std::endl;
+    } else {
+      const auto sparse_value_scaling_factor = 1.0; // To convert from float to uint8
+      const auto sparse_value_dim = 0;  // To select the dimension that should be exported
 
-      Eigen::Vector3d user_color(
-        sample["user_color"]["r"],
-        sample["user_color"]["g"],
-        sample["user_color"]["b"]
-      );
+      char sparseSeriesUid[100], sop_uid[100];
+      dcmGenerateUniqueIdentifier(sparseSeriesUid);
+      dcmGenerateUniqueIdentifier(sop_uid, SITE_INSTANCE_UID_ROOT);
 
-      // TODO finalize
+      DcmFileFormat fileformat;
+      DcmDataset *dataset = fileformat.getDataset();
 
-      // addSparseMeasurementImpl(
-      //   sample["timestamp"],
-      //   sample["sensor_id"],
-      //   sample["position"],
-      //   sample["orientation"],
-      //   sample["value"],
-      //   user_color,
-      //   true,
-      //   false
-      // );
+      dataset->putAndInsertString(DCM_PatientID, patient_id);
+      dataset->putAndInsertString(DCM_PatientName, patient_name);
+      dataset->putAndInsertString(DCM_Modality, "OT");
+      dataset->putAndInsertString(DCM_SeriesDescription, "Sparse Point Measurements");
+      
+      dataset->putAndInsertString(DCM_SOPInstanceUID, sop_uid);
+      dataset->putAndInsertString(DCM_SeriesInstanceUID, sparseSeriesUid);
+      dataset->putAndInsertString(DCM_SeriesDescription, "Sparse Measurements");
+      
+      // Extract data
+      std::vector<float> point_cloud_coords;
+      std::vector<u_int8_t> point_cloud_values;
+      point_cloud_coords.reserve(getSparseDataCount() * 3);
+      point_cloud_values.reserve(getSparseDataCount());
 
+      double first_timestamp = std::numeric_limits<double>::max();
+      double last_timestamp = std::numeric_limits<double>::min();
+
+      // Iterate over sparse data and extract coordinates and values
+      auto it = std::unique_ptr<rocksdb::Iterator>(db_->NewIterator(rocksdb::ReadOptions()));
+      for (it->Seek(DB_KEY_SPARSE_DATA_PREFIX);
+        it->Valid() && it->key().starts_with(DB_KEY_SPARSE_DATA_PREFIX); it->Next())
+      {
+        // Deserialize
+        json sample = json::parse(it->value().ToStringView());
+
+        // Store point coordinates
+        point_cloud_coords.push_back(sample["position"][0]);
+        point_cloud_coords.push_back(sample["position"][1]);
+        point_cloud_coords.push_back(sample["position"][2]);
+
+        // Store point value
+        point_cloud_values.push_back(
+          sample["value"][sparse_value_dim].get<double>() * sparse_value_scaling_factor);
+
+        double timestamp = sample["timestamp"];
+        first_timestamp = std::min(first_timestamp, timestamp);
+        last_timestamp = std::max(last_timestamp, timestamp);
+      }
+      
+      // Sore coordinates
+      {
+        DcmSequenceOfItems *point_cloud_container = new DcmSequenceOfItems(DCM_SurfacePointsSequence);  // Not really a sequence...
+        {
+          DcmItem *point_cloud = new DcmItem();
+          point_cloud->putAndInsertUint32(DCM_NumberOfSurfacePoints, getSparseDataCount()); 
+          point_cloud->putAndInsertFloat32Array(
+            DCM_PointCoordinatesData, 
+            &point_cloud_coords[0], 
+            point_cloud_coords.size());
+          point_cloud_container->append(point_cloud);
+        }
+        dataset->insert(point_cloud_container, OFTrue);
+      }
+      // Store values
+      dataset->putAndInsertUint8Array(DCM_SurfacePointPresentationValueData, &point_cloud_values[0], point_cloud_values.size());
+
+      // Store metadata
+      dataset->putAndInsertFloat64(DCM_ShotDurationTime, last_timestamp - first_timestamp);
+      dataset->putAndInsertString(DCM_AcquisitionDateTime, "YYYYMMDDHHMMSS.FFFFFF&ZZXX"); // TODO real date time
+      dataset->putAndInsertString(DCM_AcquisitionNumber, "1");
+      dataset->putAndInsertString(DCM_InstanceNumber, "1");
+      
+      {
+        // Can be left empty, but must be present
+        DcmSequenceOfItems *scan_mode_dummy = new DcmSequenceOfItems(DCM_SurfaceScanModeCodeSequence)
+        dataset->insert(scan_mode_dummy);
+      }
+
+      {
+        DcmSequenceOfItems *scan_acq_type_container = new DcmSequenceOfItems(DCM_SurfaceScanAcquisitionTypeCodeSequence);
+        {
+          DcmItem *scan_acq_type = new DcmItem();
+          scan_acq_type->putAndInsertString(DCM_CodingSchemeDesignator, "DCM");  // TODO replace with diconde equvalent
+          scan_acq_type->putAndInsertString(DCM_CodeMeaning, "Point Cloud Algorithmic");  // TODO better data type
+          scan_acq_type->putAndInsertString(DCM_CodingSchemeDesignator, "114208");
+          scan_acq_type_container->append(scan_acq_type);
+        }
+        dataset->insert(scan_acq_type_container);
+      }
+
+      // Write to disk
+      fs::path dcm_current_image_path = diconde_folder / "sparse.dcm";
+      
+      OFCondition cond = fileformat.saveFile(dcm_current_image_path.c_str(), EXS_LittleEndianExplicit);
+      if (!cond.good())
+      {
+          std::cerr << "Error saving DICOM file: " << cond.text() << std::endl;
+      }  
     }
   }
-
 }
 
 void Inspection::loadMesh(const std::string & key, open3d::geometry::TriangleMesh & mesh)
