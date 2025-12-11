@@ -60,10 +60,16 @@ vinspect:
 
   sparse:
     value_to_display:
-        type: string
-        default_value: ""
+      type: string
+      default_value: ""
+      read_only: true
+      description: "Which of the values that is transmitted should be shown in the visualization."
+    diconde:
+      scaling:
+        type: double
+        default_value: 100.0
         read_only: true
-        description: "Which of the values that is transmitted should be shown in the visualization."
+        description: "The diconde point cloud stores integer values, so we need to rescale decimals."
 
     value_names:
       type: string_array

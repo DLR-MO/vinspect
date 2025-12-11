@@ -830,7 +830,14 @@ private:
     const std::shared_ptr<vinspect_msgs::srv::SaveDICONDE::Request> request,
     std::shared_ptr<vinspect_msgs::srv::SaveDICONDE::Response> response) 
   {
-    inspection_->saveDiconde(request->path);
+    const fs::path save_folder(request->path);
+    inspection_->saveDiconde(
+      save_folder,
+      request->part_name,
+      request->part_id,
+      params_.sparse.diconde.scaling,
+      params_.sparse.value_to_display
+    );
     response->success = true;
   }
 

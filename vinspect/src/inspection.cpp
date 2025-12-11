@@ -199,20 +199,7 @@ std::vector<double> Inspection::getSparseValuesForIds(
   const std::string & value_name,
   const std::vector<uint64_t> & ids) const
 {
-  // Find the value info that matches the name
-  auto it = std::find_if(
-    sparse_value_infos_.begin(),
-    sparse_value_infos_.begin(),
-    [&value_name](const auto & info){
-      return info.name == value_name;
-    });
-
-  if (it == sparse_value_infos_.end()) {
-    throw std::runtime_error(fmt::format("Value info with name {} not found in sensor value infos",
-        value_name));
-  }
-
-  std::size_t value_index = std::distance(sparse_value_infos_.begin(), it);
+  std::size_t value_index = getSparseDimIdx(value_name);
 
   std::vector<double> values(ids.size());
   for (uint64_t i = 0; i < ids.size(); i++) {
@@ -759,23 +746,26 @@ void Inspection::storeMesh(const std::string & key, const open3d::geometry::Tria
   }
 }
 
-void Inspection::saveDiconde(const std::string & folder_path)
+void Inspection::saveDiconde(
+  const fs::path & save_folder,
+  const std::string & part_name,
+  const std::string & part_id,
+  const double sparse_value_scaling_factor, // To convert from float to int
+  const std::string & sparse_value_dim  // To select the dimension that should be exported
+)
 {
   // Acquire mutex for the full save duration, so nothing changes during the saving process
   std::lock_guard<std::mutex> lock(mtx_);
 
   // Create Folder
-  const fs::path save_folder(folder_path);
   const fs::path diconde_folder = save_folder / "diconde";
   std::filesystem::create_directory(diconde_folder);
   
   // Create global metadata    // TODO rename to DICONDE names
-  auto patient_name = "Doe^John"; // TODO make parameter
-  auto patient_id = "0000";
-  
   char studyInstanceUID[100];
   dcmGenerateUniqueIdentifier(studyInstanceUID);
 
+  // Defines a helper function that converts a chrono timepoint into a DICOM time string
   auto to_dcm_time_format = [](std::chrono::system_clock::time_point tp){
       // Convert to C API
       auto tp_time_t = std::chrono::system_clock::to_time_t(tp);
@@ -816,7 +806,7 @@ void Inspection::saveDiconde(const std::string & folder_path)
       const fs::path image_folder = diconde_folder / "images"; 
       std::filesystem::create_directory(image_folder);
   
-      // TODO maybe a series for each sensor
+      // TODO maybe use a series for each sensor
       char imageSeriesUID[100], depthSeriesUID[100];
       dcmGenerateUniqueIdentifier(imageSeriesUID);
       dcmGenerateUniqueIdentifier(depthSeriesUID);
@@ -848,8 +838,9 @@ void Inspection::saveDiconde(const std::string & folder_path)
           DcmFileFormat fileformat;
           DcmDataset *dataset = fileformat.getDataset();
       
-          dataset->putAndInsertString(DCM_PatientID, patient_id);
-          dataset->putAndInsertString(DCM_PatientName, patient_name);
+          // Add general metadata
+          dataset->putAndInsertString(DCM_PatientID, part_id.c_str());
+          dataset->putAndInsertString(DCM_PatientName, part_name.c_str());
           dataset->putAndInsertString(DCM_SOPClassUID, UID_SecondaryCaptureImageStorage);        
           dataset->putAndInsertString(DCM_SOPInstanceUID, imageSOPUID);
           dataset->putAndInsertString(DCM_SeriesInstanceUID, imageSeriesUID);
@@ -874,9 +865,7 @@ void Inspection::saveDiconde(const std::string & folder_path)
             dataset->insertSequenceItem(DCM_ReferencedImageSequence, depthReference);
           }
       
-          // ------------------------------------------------------------------
-          // Set the image attributes
-          // ------------------------------------------------------------------
+          // Set the image representation attributes
           dataset->putAndInsertUint16(DCM_Rows, sensor.getHeight());
           dataset->putAndInsertUint16(DCM_Columns, sensor.getWidth());
           dataset->putAndInsertUint16(DCM_SamplesPerPixel, 3);            // RGB
@@ -890,10 +879,7 @@ void Inspection::saveDiconde(const std::string & folder_path)
           dataset->putAndInsertUint16(DCM_SmallestImagePixelValue, 0);
           dataset->putAndInsertUint16(DCM_LargestImagePixelValue, 255);
       
-      
-          // ------------------------------------------------------------------
           // Store the raw pixel data
-          // ------------------------------------------------------------------
           dataset->putAndInsertUint8Array(
             DCM_PixelData, 
             reinterpret_cast<const std::uint8_t*>(
@@ -916,8 +902,9 @@ void Inspection::saveDiconde(const std::string & folder_path)
           DcmFileFormat fileformat;
           DcmDataset *dataset = fileformat.getDataset();
       
-          dataset->putAndInsertString(DCM_PatientID, patient_id);
-          dataset->putAndInsertString(DCM_PatientName, patient_name);
+          // Add general metadata
+          dataset->putAndInsertString(DCM_PatientID, part_id.c_str());
+          dataset->putAndInsertString(DCM_PatientName, part_name.c_str());
           dataset->putAndInsertString(DCM_SOPClassUID, UID_SecondaryCaptureImageStorage);        
           dataset->putAndInsertString(DCM_SOPInstanceUID, depthSOPUID);
           dataset->putAndInsertString(DCM_SeriesInstanceUID, depthSeriesUID);
@@ -942,21 +929,19 @@ void Inspection::saveDiconde(const std::string & folder_path)
             dataset->insertSequenceItem(DCM_ReferencedImageSequence, rgbReference);
           }
       
-          // ------------------------------------------------------------------
-          // Set the image attributes
-          // ------------------------------------------------------------------
+          // Set the image representation attributes
           dataset->putAndInsertUint16(DCM_Rows, sensor.getHeight());
           dataset->putAndInsertUint16(DCM_Columns, sensor.getWidth());
           dataset->putAndInsertUint16(DCM_SamplesPerPixel, 1);            // Depth
           dataset->putAndInsertString(DCM_PhotometricInterpretation, "MONOCHROME2");
           dataset->putAndInsertUint16(DCM_SmallestImagePixelValue, 0);
           dataset->putAndInsertUint16(DCM_PixelRepresentation, 0);  // unsigned
-    
+
+          // Add data depending on representation
           if (retrievedEntry.depth_dtype() == CV_16UC1) {
             dataset->putAndInsertUint16(DCM_BitsAllocated, 16);
-            dataset->putAndInsertUint16(DCM_BitsStored, 16);  // TODO check if the alignment etc are correct
+            dataset->putAndInsertUint16(DCM_BitsStored, 16);
             dataset->putAndInsertUint16(DCM_HighBit, 15);
-    
             dataset->putAndInsertUint16Array(
               DCM_PixelData,
               reinterpret_cast<const std::uint16_t*>(
@@ -969,7 +954,6 @@ void Inspection::saveDiconde(const std::string & folder_path)
             dataset->putAndInsertUint16(DCM_BitsAllocated, 32);
             dataset->putAndInsertUint16(DCM_BitsStored, 32);
             dataset->putAndInsertUint16(DCM_HighBit, 31);
-    
             dataset->putAndInsertFloat32Array(
               DCM_FloatPixelData,
               reinterpret_cast<const float*>(
@@ -980,7 +964,6 @@ void Inspection::saveDiconde(const std::string & folder_path)
             std::runtime_error("Unsupported depth data type");
           }
       
-            
           // Write to disk
           fs::path dcm_current_image_path = image_folder / fmt::format("{:0>{}}_depth.dcm", img_idx, 12);
       
@@ -995,7 +978,6 @@ void Inspection::saveDiconde(const std::string & folder_path)
     }
   }
 
-
   // Save sparse data
   if (getSparseUsage())
   {
@@ -1004,46 +986,29 @@ void Inspection::saveDiconde(const std::string & folder_path)
     {
       std::cout << "Skipping sparse data saving as no sparse data is available!" << std::endl;
     } else {
-      const auto sparse_value_scaling_factor = 100.0; // To convert from float to int
-      const auto sparse_value_dim = 0;  // To select the dimension that should be exported
-
+      // Create UIDs
       char sparseSeriesUid[100], sop_uid[100], frameOfReferenceUID[100];
       dcmGenerateUniqueIdentifier(sparseSeriesUid);
       dcmGenerateUniqueIdentifier(sop_uid, SITE_INSTANCE_UID_ROOT);
       dcmGenerateUniqueIdentifier(frameOfReferenceUID);
 
+      // Determine data value dimension
+      std::size_t sparse_value_dim_idx = 0;
+      if (sparse_value_dim != "")
+      {
+        sparse_value_dim_idx = getSparseDimIdx(sparse_value_dim);
+      }
+
       DcmFileFormat fileformat;
       DcmDataset *dataset = fileformat.getDataset();
 
-      dataset->putAndInsertString(DCM_PatientID, patient_id);
-      dataset->putAndInsertString(DCM_PatientName, patient_name);
-
-      dataset->putAndInsertString(DCM_Modality, "OT");
-      dataset->putAndInsertString(DCM_SeriesDescription, "Sparse Point Measurements");
-      dataset->putAndInsertString(DCM_SOPClassUID, UID_SurfaceScanPointCloudStorage);
-      dataset->putAndInsertString(DCM_StudyInstanceUID, studyInstanceUID);
-      dataset->putAndInsertString(DCM_FrameOfReferenceUID, frameOfReferenceUID);
-
-      // Device
-      dataset->putAndInsertString(DCM_Manufacturer, "DLR");
-      dataset->putAndInsertString(DCM_ManufacturerModelName, "VINSPECT");
-      dataset->putAndInsertString(DCM_DeviceSerialNumber, "0");
-      dataset->putAndInsertString(DCM_SoftwareVersions, GIT_COMMIT_HASH);
-
-      dataset->putAndInsertString(DCM_SOPInstanceUID, sop_uid);
-      dataset->putAndInsertString(DCM_SeriesInstanceUID, sparseSeriesUid);
-      dataset->putAndInsertString(DCM_SeriesDescription, "Sparse Measurements");
-      
       // Extract data
       std::vector<float> point_cloud_coords;
       std::vector<u_int16_t> point_cloud_values;
       point_cloud_coords.reserve(getSparseDataCount() * 3);
       point_cloud_values.reserve(getSparseDataCount());
-
       double first_timestamp = std::numeric_limits<double>::max();
       double last_timestamp = std::numeric_limits<double>::min();
-
-      // Iterate over sparse data and extract coordinates and values
       auto it = std::unique_ptr<rocksdb::Iterator>(db_->NewIterator(rocksdb::ReadOptions()));
       for (it->Seek(DB_KEY_SPARSE_DATA_PREFIX);
         it->Valid() && it->key().starts_with(DB_KEY_SPARSE_DATA_PREFIX); it->Next())
@@ -1059,12 +1024,13 @@ void Inspection::saveDiconde(const std::string & folder_path)
         // Store point value
         point_cloud_values.push_back(
           std::clamp(
-            sample["value"][sparse_value_dim].get<double>() * sparse_value_scaling_factor,
+            sample["value"][sparse_value_dim_idx].get<double>() * sparse_value_scaling_factor,
             0.0,
             static_cast<double>(std::numeric_limits<u_int16_t>::max())
           )
         );
 
+        // Estimate first and last timestamp
         double timestamp = sample["timestamp"];
         first_timestamp = std::min(first_timestamp, timestamp);
         last_timestamp = std::max(last_timestamp, timestamp);
@@ -1080,31 +1046,40 @@ void Inspection::saveDiconde(const std::string & folder_path)
           point_cloud_coords.size());
         dataset->insertSequenceItem(DCM_SurfacePointsSequence, point_cloud);
       }
+
       // Store values
       dataset->putAndInsertUint16Array(DCM_SurfacePointPresentationValueData, &point_cloud_values[0], point_cloud_values.size());
 
       // Store metadata
+      dataset->putAndInsertString(DCM_PatientID, part_id.c_str());
+      dataset->putAndInsertString(DCM_PatientName, part_name.c_str());
+      dataset->putAndInsertString(DCM_Modality, "OT");
+      dataset->putAndInsertString(DCM_SeriesDescription, "Sparse Point Measurements");
+      dataset->putAndInsertString(DCM_SOPClassUID, UID_SurfaceScanPointCloudStorage);
+      dataset->putAndInsertString(DCM_StudyInstanceUID, studyInstanceUID);
+      dataset->putAndInsertString(DCM_FrameOfReferenceUID, frameOfReferenceUID);
+      dataset->putAndInsertString(DCM_SOPInstanceUID, sop_uid);
+      dataset->putAndInsertString(DCM_SeriesInstanceUID, sparseSeriesUid);
+      dataset->putAndInsertString(DCM_Manufacturer, "DLR");
+      dataset->putAndInsertString(DCM_ManufacturerModelName, "VINSPECT");
+      dataset->putAndInsertString(DCM_DeviceSerialNumber, "0");  // Dummy value
+      dataset->putAndInsertString(DCM_SoftwareVersions, GIT_COMMIT_HASH);
       dataset->putAndInsertFloat64(DCM_ShotDurationTime, last_timestamp - first_timestamp);
-
-      std::chrono::system_clock::time_point tp{
-        std::chrono::duration_cast<std::chrono::microseconds>(
-          std::chrono::duration<double>(first_timestamp)
-        )
-      };
-      auto time_string = to_dcm_time_format(tp);
-      dataset->putAndInsertString(DCM_AcquisitionDateTime, time_string.c_str());
-      dataset->putAndInsertString(DCM_AcquisitionNumber, "1");
-      dataset->putAndInsertString(DCM_InstanceNumber, "1");
-      
       {
-        // Can be left empty, but must be present
-        DcmSequenceOfItems *scan_mode_dummy = new DcmSequenceOfItems(DCM_SurfaceScanModeCodeSequence);
-        dataset->insert(scan_mode_dummy);
+        std::chrono::system_clock::time_point tp{
+          std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::duration<double>(first_timestamp)
+          )
+        };
+        auto time_string = to_dcm_time_format(tp);
+        dataset->putAndInsertString(DCM_AcquisitionDateTime, time_string.c_str());
       }
-
+      dataset->putAndInsertString(DCM_AcquisitionNumber, "1");  // Dummy value
+      dataset->putAndInsertString(DCM_InstanceNumber, "1");  // Dummy value
+      dataset->insert(new DcmSequenceOfItems(DCM_SurfaceScanModeCodeSequence)); // Can be left empty, but must be present
       {
         DcmItem *scan_acq_type = new DcmItem();
-        scan_acq_type->putAndInsertString(DCM_CodingSchemeDesignator, "DCM");  // TODO replace with diconde equvalent
+        scan_acq_type->putAndInsertString(DCM_CodingSchemeDesignator, "DCM");
         scan_acq_type->putAndInsertString(DCM_CodeMeaning, "Point Cloud Algorithmic");  // TODO better data type
         scan_acq_type->putAndInsertString(DCM_CodingSchemeDesignator, "114208");
         dataset->insertSequenceItem(DCM_SurfaceScanAcquisitionTypeCodeSequence, scan_acq_type);
