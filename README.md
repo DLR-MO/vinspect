@@ -20,6 +20,7 @@ Additionally, we also provide a ROS2 interface which we recommend for easy integ
 - Fast visualization and data access times due to usage of octrees
 - Simple to integrate C++ library
 - Python bindings
+- DICONDE export
 
 ### Planned Features
 - Recording of the robot's pose during recording of a data point
@@ -64,6 +65,8 @@ This includes getting the
 The `Inspection` class continuously saves the inspection data to prevent any data loss.
 The data can be loaded instantiating an inspection with the same save path.
 It is then also possible to continue the inspection and appending new data to the loaded file.
+
+An inspection can also be exported in the DICONDE format for further analysis or documentation purposes.
 
 ## ROS 2
 
