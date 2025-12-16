@@ -23,6 +23,10 @@
 #include <unistd.h>
 #include <vector>
 
+#include "dcmtk/dcmdata/dctk.h"
+#include "dcmtk/dcmimgle/dcmimage.h"
+#include "dcmtk/dcmdata/dcuid.h"
+
 #include <fmt/format.h>
 #include <nlohmann/json.hpp>
 
@@ -63,6 +67,7 @@ https://eigen.tuxfamily.org/dox/unsupported/group__EulerAngles__Module.html
 #define DB_KEY_DENSE_DATA_PREFIX std::string("/data/dense/")
 
 using json = nlohmann::json;
+namespace fs = std::filesystem;
 
 namespace vinspect
 {
@@ -138,6 +143,27 @@ public:
       }
     }
     throw std::runtime_error(fmt::format("No dense sensor with ID {}!", sensor_id));
+  }
+
+  /**
+   * Returns sparse value dimension index given its name
+   * @param name dimension name
+   * @return index
+   */
+  std::size_t getSparseDimIdx(const std::string& name) const
+  {
+    auto it = std::find_if(
+      sparse_value_infos_.begin(),
+      sparse_value_infos_.begin(),
+      [&name](const auto & info){
+        return info.name == name;
+      });
+
+    if (it == sparse_value_infos_.end()) {
+      throw std::runtime_error(
+        fmt::format("Value info with name {} not found in sensor value infos", name));
+    }
+    return std::distance(sparse_value_infos_.begin(), it);
   }
 
   /**
@@ -233,6 +259,22 @@ public:
    * Recreates the octrees. Useful if the inspection space should be adapted to the current data.
    */
   void reinitializeTSDF(double voxel_length);
+
+  /**
+   * Stores the current inspection data in a DICONDE files
+   * @param save_folder Path where the inspection should be stored
+   * @param component_name Name of the inspected component
+   * @param component_id Id of the inspected component
+   * @param sparse_value_scaling_factor Rescale decimal sparse measurements for integer cast
+   * @param sparse_value_dim Name of the sparse data dimension that should be exported
+   */
+  void saveDiconde(
+    const fs::path & save_folder,
+    const std::string & component_name,
+    const std::string & component_id,
+    const double sparse_value_scaling_factor = 100.0,
+    const std::string & sparse_value_dim = ""
+  );
 
   void clear();
 

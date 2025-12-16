@@ -195,14 +195,27 @@ SettingsPanel::SettingsPanel(QWidget * parent)
   
   dense_layout->addStretch();
 
+  // Modality independent UI
+  auto* misc_layout = new QVBoxLayout(this);
+  auto* misc_widget = new QWidget;
+  misc_widget->setLayout(misc_layout);
+
+  auto* export_diconde_req_button = new QPushButton("Export DICONDE");
+  connect(export_diconde_req_button, &QPushButton::clicked, [this] {saveDicondeClick();});
+  misc_layout->addWidget(export_diconde_req_button);
+
   // make tab layout of sparse and dense
-  QTabWidget * tab_widget = new QTabWidget(this);
-  auto sparse_widget = new QWidget;
-  auto dense_widget = new QWidget;
+  QTabWidget * tab_widget = new QTabWidget();
+  auto* sparse_widget = new QWidget;
+  auto* dense_widget = new QWidget;
   sparse_widget->setLayout(sparse_layout);
   dense_widget->setLayout(dense_layout);
   tab_widget->addTab(sparse_widget, "Sparse Data");
   tab_widget->addTab(dense_widget, "Dense Data");
+
+  auto* parent_layout = new QVBoxLayout(this);
+  parent_layout->addWidget(tab_widget, 1);  
+  parent_layout->addWidget(misc_widget);
 }
 
 void SettingsPanel::save(const rviz_common::Config conf) const {rviz_common::Panel::save(conf);}
@@ -221,6 +234,8 @@ void SettingsPanel::onInitialize()
     "/vinspect/start_reconstruction");
   stop_client_ =
     plugin_node_->create_client<std_srvs::srv::Empty>("/vinspect/stop_reconstruction");
+  save_diconde_client_ = plugin_node_->create_client<vinspect_msgs::srv::SaveDICONDE>(
+    "/diconde/save");
   dense_req_publisher_ = plugin_node_->create_publisher<std_msgs::msg::Empty>(
     "vinspect/dense_data_req", latching_qos);
   dense_available_poses_publisher_ = plugin_node_->create_publisher<std_msgs::msg::Int32>(
@@ -378,6 +393,85 @@ void SettingsPanel::denseAvailablePosesClick()
   {
     RCLCPP_ERROR(plugin_node_->get_logger(), "Multiple pose request value not > 0 and >= 100");
   }
+}
+
+void SettingsPanel::saveDicondeClick()
+{
+  // Get the export folder
+  QString folder = QFileDialog::getExistingDirectory(
+    this,
+    tr("Select destination folder"),
+    QString(),
+    QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks);
+
+  // Check if the user entered something
+  if (folder.isEmpty())
+      return;
+
+  // Create a dialog to ask for additional information
+  QDialog dlg(this);
+  dlg.setWindowTitle(tr("Additional information"));
+  dlg.setModal(true);
+
+  QFormLayout *form = new QFormLayout(&dlg);
+
+  QLineEdit *nameEdit = new QLineEdit(&dlg);
+  nameEdit->setPlaceholderText(tr("Component Name"));
+  form->addRow(tr("Component Name:"), nameEdit);
+
+  QLineEdit *idEdit = new QLineEdit(&dlg);
+  idEdit->setPlaceholderText(tr("Component ID"));
+  form->addRow(tr("Component ID:"), idEdit);
+
+  QDialogButtonBox *buttons = new QDialogButtonBox(
+      QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+  form->addRow(buttons);
+
+  // Only enable the OK button if the info was entered
+  QPushButton *okBtn = buttons->button(QDialogButtonBox::Ok);
+  okBtn->setEnabled(false);            // start disabled
+  auto updateOkState = [okBtn, nameEdit, idEdit]() {
+      bool allFilled = !nameEdit->text().isEmpty()
+                        && !idEdit->text().isEmpty();
+      okBtn->setEnabled(allFilled);
+  };
+  QObject::connect(nameEdit, &QLineEdit::textChanged,
+                    &dlg, updateOkState);
+  QObject::connect(idEdit, &QLineEdit::textChanged,
+                    &dlg, updateOkState);
+
+  // Standard signals
+  QObject::connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+  QObject::connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+
+  // Check if the user passed the dialog
+  if (dlg.exec() != QDialog::Accepted) 
+      return;
+
+  // Build request
+  auto request = std::make_shared<vinspect_msgs::srv::SaveDICONDE::Request>();
+  request->path = folder.toStdString();
+  request->component_name = nameEdit->text().toStdString();
+  request->component_id = idEdit->text().toStdString();
+
+  // Define callback that displays if the export was successful
+  using ServiceResponseFuture =
+    rclcpp::Client<vinspect_msgs::srv::SaveDICONDE>::SharedFuture;
+  auto response_received_callback = [this](ServiceResponseFuture future) {
+      auto result = future.get();
+      if (result->success) {
+        QMessageBox::information(this,
+                            tr("Saved"),
+                            tr("DICONDE export successful."));
+      } else {
+        QMessageBox::warning(this,
+                            tr("Failure"),
+                            tr("DICONDE export failed."));
+      }
+    };
+
+  // Call the export
+  save_diconde_client_->async_send_request(request, response_received_callback);
 }
 
 SettingsPanel::~SettingsPanel()

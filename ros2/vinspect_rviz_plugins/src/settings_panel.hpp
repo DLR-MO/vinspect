@@ -17,6 +17,7 @@
 #include <QTabWidget>
 #include <QVBoxLayout>
 #include <QWidget>
+#include <QtWidgets> 
 
 #include <iostream>
 #include <memory>
@@ -33,6 +34,7 @@
 
 #include "vinspect_msgs/msg/settings.hpp"
 #include "vinspect_msgs/srv/start_reconstruction.hpp"
+#include "vinspect_msgs/srv/save_diconde.hpp"
 
 class string;
 class QButtonGroup;
@@ -84,6 +86,7 @@ protected:
   rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr dense_available_poses_publisher_;
   rclcpp::Client<vinspect_msgs::srv::StartReconstruction>::SharedPtr start_client_;
   rclcpp::Client<std_srvs::srv::Empty>::SharedPtr stop_client_;
+  rclcpp::Client<vinspect_msgs::srv::SaveDICONDE>::SharedPtr save_diconde_client_;
   vinspect_msgs::msg::Settings sparse_settings_msg_;
 
 protected Q_SLOTS:
@@ -100,6 +103,7 @@ protected Q_SLOTS:
   void requestStopClick();
   void denseReqClick();
   void denseAvailablePosesClick();
+  void saveDicondeClick();
 };
 
 }  // namespace plugins
