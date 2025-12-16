@@ -44,12 +44,14 @@ SettingsPanel::SettingsPanel(QWidget * parent)
   connect(transparency_slider_, SIGNAL(valueChanged(int)), this, SLOT(onTransparencyChange(int)));
 
   // horizontal divider line
-  QWidget * horizontal_line_widget_1 = new QWidget;
-  horizontal_line_widget_1->setFixedHeight(2);
-  horizontal_line_widget_1->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-  horizontal_line_widget_1->setStyleSheet(QString("background-color: #c0c0c0;"));
-  sparse_layout->addWidget(horizontal_line_widget_1);
-
+  {
+    auto* horizontal_line_widget = new QWidget;
+    horizontal_line_widget->setFixedHeight(2);
+    horizontal_line_widget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    horizontal_line_widget->setStyleSheet(QString("background-color: #c0c0c0;"));
+    sparse_layout->addWidget(horizontal_line_widget);
+  }
+  
   // dot size
   sparse_layout->addWidget(new QLabel("Dot radius:"));
   dot_size_input_ = new QLineEdit(QString::fromStdString(std::to_string(start_dot_size)));
@@ -104,11 +106,13 @@ SettingsPanel::SettingsPanel(QWidget * parent)
   sparse_layout->addWidget(new QLabel("Note: Remeshing might take a while"));
 
   // horizontal divider line
-  QWidget * horizontal_line_widget_2 = new QWidget;
-  horizontal_line_widget_2->setFixedHeight(2);
-  horizontal_line_widget_2->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-  horizontal_line_widget_2->setStyleSheet(QString("background-color: #c0c0c0;"));
-  sparse_layout->addWidget(horizontal_line_widget_2);
+  {
+    auto* horizontal_line_widget = new QWidget;
+    horizontal_line_widget->setFixedHeight(2);
+    horizontal_line_widget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    horizontal_line_widget->setStyleSheet(QString("background-color: #c0c0c0;"));
+    sparse_layout->addWidget(horizontal_line_widget);
+  }
 
   // horizontal layout for buttons
   QHBoxLayout * hlayout = new QHBoxLayout(this);
@@ -126,63 +130,70 @@ SettingsPanel::SettingsPanel(QWidget * parent)
   connect(clear_sparse_button, &QPushButton::clicked, [this] {clearSparseClick();});
   hlayout->addWidget(clear_sparse_button);
 
+  sparse_layout->addStretch();
+
   // dense settings
-  QGridLayout * dense_layout = new QGridLayout(this);
-  QStringList input_names = {"voxel_length_", "depth_trunc_"};
-  std::reference_wrapper<QLineEdit *> input_objects[] = {
-    voxel_length_, depth_trunc_};
-  int row = 0;
-  int column = 0;
-  for (int i = 0; i < input_names.size(); i++) {
-    input_objects[i].get() = new QLineEdit("");
-    input_objects[i].get()->setPlaceholderText("Set " + input_names[i]);
-    dense_layout->addWidget(input_objects[i], row, column);
-    if (row < 5) {
-      row++;
-    } else {
-      column++;
-      row = 0;
-    }
-  }
-  QPushButton * service_start_button = new QPushButton("Send start request");
+  auto * dense_layout = new QVBoxLayout(this);
+
+  dense_layout->addWidget(new QLabel("Set voxel length:"));
+  voxel_length_ = new QLineEdit(QString::fromStdString(std::to_string(0.02)));
+  voxel_length_->setPlaceholderText("Set voxel length");
+  dense_layout->addWidget(voxel_length_);
+
+  dense_layout->addWidget(new QLabel("Set depth trunc:"));
+  depth_trunc_ = new QLineEdit(QString::fromStdString(std::to_string(0.75)));
+  depth_trunc_->setPlaceholderText("Set depth trunc");
+  dense_layout->addWidget(depth_trunc_);
+
+  auto* h_save_layout = new QHBoxLayout(this);
+  dense_layout->addLayout(h_save_layout);
+
+  auto* service_start_button = new QPushButton("Start");
   connect(service_start_button, &QPushButton::clicked, [this] {requestStartClick();});
-  dense_layout->addWidget(service_start_button, 7, 0, 1, 2);
+  h_save_layout->addWidget(service_start_button);
 
-  QPushButton * default_button = new QPushButton("Set default values");
-  connect(
-    default_button, &QPushButton::clicked, [this, input_objects] {
-      setDefaultClick(input_objects);
-    });
-  dense_layout->addWidget(default_button, 6, 0);
-
-  QPushButton * clear_button = new QPushButton("Clear");
-  connect(
-    clear_button, &QPushButton::clicked, [this, input_objects] {clearClick(input_objects);});
-  dense_layout->addWidget(clear_button, 6, 1);
-
-  QWidget * horizontal_line_widget_3 = new QWidget;
-  horizontal_line_widget_3->setFixedHeight(2);
-  horizontal_line_widget_3->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-  horizontal_line_widget_3->setStyleSheet(QString("background-color: #c0c0c0;"));
-  dense_layout->addWidget(horizontal_line_widget_3, 9, 0, 1, 2);
-
-  QPushButton * service_stop_button = new QPushButton("Send stop request");
+  auto* service_stop_button = new QPushButton("Stop");
   connect(service_stop_button, &QPushButton::clicked, [this] {requestStopClick();});
-  dense_layout->addWidget(service_stop_button, 12, 0, 1, 2);
+  h_save_layout->addWidget(service_stop_button);
 
-  QWidget * horizontal_line_widget_4 = new QWidget;
-  horizontal_line_widget_4->setFixedHeight(2);
-  horizontal_line_widget_4->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-  horizontal_line_widget_4->setStyleSheet(QString("background-color: #c0c0c0;"));
-  dense_layout->addWidget(horizontal_line_widget_4, 13, 0, 1, 2);
+  {
+    auto* horizontal_line_widget = new QWidget;
+    horizontal_line_widget->setFixedHeight(2);
+    horizontal_line_widget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    horizontal_line_widget->setStyleSheet(QString("background-color: #c0c0c0;"));
+    dense_layout->addWidget(horizontal_line_widget);
+  }
 
-  QPushButton * dense_req_button = new QPushButton("Get dense data at pose");
+  QPushButton * dense_req_button = new QPushButton("Get dense data near marker");
   connect(dense_req_button, &QPushButton::clicked, [this] {denseReqClick();});
-  dense_layout->addWidget(dense_req_button, 15, 0, 1, 2);
+  dense_layout->addWidget(dense_req_button);
 
-  QPushButton * dense_available_poses_button = new QPushButton("Show available dense poses");
+  {
+    auto* horizontal_line_widget = new QWidget;
+    horizontal_line_widget->setFixedHeight(2);
+    horizontal_line_widget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    horizontal_line_widget->setStyleSheet(QString("background-color: #c0c0c0;"));
+    dense_layout->addWidget(horizontal_line_widget);
+  }
+
+  auto* h_query_percent_slider_layout = new QHBoxLayout(this);
+  dense_layout->addLayout(h_query_percent_slider_layout);
+
+  h_query_percent_slider_layout->addWidget(new QLabel("Fraction:"));
+  multi_pose_percentage = new QSlider(Qt::Horizontal);
+  multi_pose_percentage->setFocusPolicy(Qt::StrongFocus);
+  multi_pose_percentage->setTickPosition(QSlider::TicksBothSides);
+  multi_pose_percentage->setTickInterval(10);
+  multi_pose_percentage->setSingleStep(1);
+  multi_pose_percentage->setTracking(false);
+  multi_pose_percentage->setValue(49);
+  h_query_percent_slider_layout->addWidget(multi_pose_percentage);
+
+  auto* dense_available_poses_button = new QPushButton("Show dense poses");
   connect(dense_available_poses_button, &QPushButton::clicked, [this] {denseAvailablePosesClick();});
-  dense_layout->addWidget(dense_available_poses_button, 16, 0);
+  dense_layout->addWidget(dense_available_poses_button);
+  
+  dense_layout->addStretch();
 
   multi_pose_percentage = new QLineEdit("");
   multi_pose_percentage->setToolTip("Enter an intger from 0 between 100");
@@ -349,21 +360,6 @@ void SettingsPanel::requestStopClick()
   auto future_result = stop_client_->async_send_request(request, response_received_callback);
 }
 
-void SettingsPanel::setDefaultClick(const std::reference_wrapper<QLineEdit *> input_objects[])
-{
-  QStringList default_input = {"0.02", "0.75"};
-  for (int i = 0; i < 2; i++) {
-    input_objects[i].get()->setText(default_input[i]);
-  }
-}
-
-void SettingsPanel::clearClick(const std::reference_wrapper<QLineEdit *> input_objects[])
-{
-  for (int i = 0; i < 2; i++) {
-    input_objects[i].get()->setText("");
-  }
-}
-
 void SettingsPanel::denseReqClick()
 {
   auto message = std_msgs::msg::Empty();
@@ -377,7 +373,7 @@ void SettingsPanel::denseAvailablePosesClick()
   Create new ROS msg with more options like percentage of poses to show, color, heatmap etc. 
   */
   auto message = std_msgs::msg::Int32();
-  int percentage = multi_pose_percentage->text().toInt();
+  int percentage = multi_pose_percentage->value() + 1;
   if (percentage > 0 && percentage <= 100)
   {
     message.data = percentage;

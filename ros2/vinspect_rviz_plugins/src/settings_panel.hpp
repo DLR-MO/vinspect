@@ -76,7 +76,7 @@ protected:
 
   QLineEdit * file_path_;
 
-   QLineEdit * multi_pose_percentage;
+  QSlider * multi_pose_percentage;
 
   std::shared_ptr<rclcpp::Node> plugin_node_;
   rclcpp::Publisher<vinspect_msgs::msg::Settings>::SharedPtr settings_publisher_;
@@ -96,8 +96,6 @@ protected Q_SLOTS:
   void pauseClick();
   void resumeClick();
   void clearSparseClick();
-  void setDefaultClick(const std::reference_wrapper<QLineEdit *> input_objects[]);
-  void clearClick(const std::reference_wrapper<QLineEdit *> input_objects[]);
   void requestStartClick();
   void requestStopClick();
   void denseReqClick();
