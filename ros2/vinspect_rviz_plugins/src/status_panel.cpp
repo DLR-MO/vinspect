@@ -15,13 +15,13 @@ StatusPanel::StatusPanel(QWidget * parent)
 {
   // Creates a vertical box layout
   QVBoxLayout * display_layout = new QVBoxLayout(this);
-  QHBoxLayout * hlayoutlabel = new QHBoxLayout(this);
+  QHBoxLayout * hlayoutlabel = new QHBoxLayout();
   display_layout->addLayout(hlayoutlabel);
   hlayoutlabel->addWidget(new QLabel(""));
   hlayoutlabel->addWidget(new QLabel("Last valid:"));
   hlayoutlabel->addWidget(new QLabel("Last:"));
   // horizontal layout to make number be in same row as label
-  QHBoxLayout * hlayoutx = new QHBoxLayout(this);
+  QHBoxLayout * hlayoutx = new QHBoxLayout();
   display_layout->addLayout(hlayoutx);
   hlayoutx->addWidget(new QLabel("X:"));
   last_position_x_ = new QLabel();
@@ -31,7 +31,7 @@ StatusPanel::StatusPanel(QWidget * parent)
   last_position_in_x_->setText("No data received yet");
   hlayoutx->addWidget(last_position_in_x_);
 
-  QHBoxLayout * hlayouty = new QHBoxLayout(this);
+  QHBoxLayout * hlayouty = new QHBoxLayout();
   display_layout->addLayout(hlayouty);
   hlayouty->addWidget(new QLabel("Y:"));
   last_position_y_ = new QLabel();
@@ -41,7 +41,7 @@ StatusPanel::StatusPanel(QWidget * parent)
   last_position_in_y_->setText("No data received yet");
   hlayouty->addWidget(last_position_in_y_);
 
-  QHBoxLayout * hlayoutz = new QHBoxLayout(this);
+  QHBoxLayout * hlayoutz = new QHBoxLayout();
   display_layout->addLayout(hlayoutz);
   hlayoutz->addWidget(new QLabel("Z:"));
   last_position_z_ = new QLabel();
@@ -51,7 +51,7 @@ StatusPanel::StatusPanel(QWidget * parent)
   last_position_in_z_->setText("No data received yet");
   hlayoutz->addWidget(last_position_in_z_);
 
-  QHBoxLayout * hlayoutv = new QHBoxLayout(this);
+  QHBoxLayout * hlayoutv = new QHBoxLayout();
   display_layout->addLayout(hlayoutv);
   hlayoutv->addWidget(new QLabel("Last value:"));
   last_value_ = new QLabel();
@@ -62,20 +62,22 @@ StatusPanel::StatusPanel(QWidget * parent)
   hlayoutv->addWidget(last_value_in_);
 
   // horizontal divider line
-  QWidget * horizontalLineWidget = new QWidget;
-  horizontalLineWidget->setFixedHeight(2);
-  horizontalLineWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-  horizontalLineWidget->setStyleSheet(QString("background-color: #c0c0c0;"));
-  display_layout->addWidget(horizontalLineWidget);
+  {
+    QWidget * horizontalLineWidget = new QWidget;
+    horizontalLineWidget->setFixedHeight(2);
+    horizontalLineWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    horizontalLineWidget->setStyleSheet(QString("background-color: #c0c0c0;"));
+    display_layout->addWidget(horizontalLineWidget);
+  }
 
-  QHBoxLayout * hlayoutn = new QHBoxLayout(this);
+  QHBoxLayout * hlayoutn = new QHBoxLayout();
   display_layout->addLayout(hlayoutn);
   hlayoutn->addWidget(new QLabel("Number of recorded values:"));
   recorded_values_ = new QLabel();
   recorded_values_->setText("0");
   hlayoutn->addWidget(recorded_values_);
 
-  QHBoxLayout * hlayouts = new QHBoxLayout(this);
+  QHBoxLayout * hlayouts = new QHBoxLayout();
   display_layout->addLayout(hlayouts);
   hlayouts->addWidget(new QLabel("Status:"));
   status_text_ = new QLabel();
@@ -83,20 +85,22 @@ StatusPanel::StatusPanel(QWidget * parent)
   hlayouts->addWidget(status_text_);
 
   // horizontal divider line
-  QWidget * horizontalLineWidget2 = new QWidget;
-  horizontalLineWidget2->setFixedHeight(2);
-  horizontalLineWidget2->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-  horizontalLineWidget2->setStyleSheet(QString("background-color: #c0c0c0;"));
-  display_layout->addWidget(horizontalLineWidget2);
+  {
+    QWidget * horizontalLineWidget = new QWidget;
+    horizontalLineWidget->setFixedHeight(2);
+    horizontalLineWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    horizontalLineWidget->setStyleSheet(QString("background-color: #c0c0c0;"));
+    display_layout->addWidget(horizontalLineWidget);
+  }
 
-  QHBoxLayout * hlayoutnd = new QHBoxLayout(this);
+  QHBoxLayout * hlayoutnd = new QHBoxLayout();
   display_layout->addLayout(hlayoutnd);
   hlayoutnd->addWidget(new QLabel("Number of integrated images:"));
   integrated_images_ = new QLabel();
   integrated_images_->setText("0");
   hlayoutnd->addWidget(integrated_images_);
 
-  QHBoxLayout * hlayoutsd = new QHBoxLayout(this);
+  QHBoxLayout * hlayoutsd = new QHBoxLayout();
   display_layout->addLayout(hlayoutsd);
   hlayoutsd->addWidget(new QLabel("Status:"));
   dense_status_text_ = new QLabel();
