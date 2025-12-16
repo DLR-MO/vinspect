@@ -761,7 +761,7 @@ void Inspection::saveDiconde(
   const fs::path diconde_folder = save_folder / "diconde";
   std::filesystem::create_directory(diconde_folder);
   
-  // Create global metadata    // TODO rename to DICONDE names
+  // Create global metadata
   char studyInstanceUID[100];
   dcmGenerateUniqueIdentifier(studyInstanceUID);
 
