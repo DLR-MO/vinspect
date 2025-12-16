@@ -195,11 +195,6 @@ SettingsPanel::SettingsPanel(QWidget * parent)
   
   dense_layout->addStretch();
 
-  multi_pose_percentage = new QLineEdit("");
-  multi_pose_percentage->setToolTip("Enter an intger from 0 between 100");
-  multi_pose_percentage->setText("50");
-  dense_layout->addWidget(multi_pose_percentage, 16, 1);
-
   // make tab layout of sparse and dense
   QTabWidget * tab_widget = new QTabWidget(this);
   auto sparse_widget = new QWidget;
