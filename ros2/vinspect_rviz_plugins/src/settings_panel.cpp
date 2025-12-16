@@ -28,7 +28,8 @@ SettingsPanel::SettingsPanel(QWidget * parent)
   sparse_settings_msg_.clear = false;
 
   // Creates a vertical box layout
-  QVBoxLayout * sparse_layout = new QVBoxLayout(this);
+  auto* sparse_widget = new QWidget;
+  QVBoxLayout * sparse_layout = new QVBoxLayout(sparse_widget);
 
   // Transparency slider
   sparse_layout->addWidget(new QLabel("Transparency:"));
@@ -115,7 +116,7 @@ SettingsPanel::SettingsPanel(QWidget * parent)
   }
 
   // horizontal layout for buttons
-  QHBoxLayout * hlayout = new QHBoxLayout(this);
+  QHBoxLayout * hlayout = new QHBoxLayout();
   sparse_layout->addLayout(hlayout);
 
   QPushButton * pause_button = new QPushButton("Pause");
@@ -133,7 +134,8 @@ SettingsPanel::SettingsPanel(QWidget * parent)
   sparse_layout->addStretch();
 
   // dense settings
-  auto * dense_layout = new QVBoxLayout(this);
+  auto* dense_widget = new QWidget;
+  auto* dense_layout = new QVBoxLayout(dense_widget);
 
   dense_layout->addWidget(new QLabel("Set voxel length:"));
   voxel_length_ = new QLineEdit(QString::fromStdString(std::to_string(0.02)));
@@ -145,7 +147,7 @@ SettingsPanel::SettingsPanel(QWidget * parent)
   depth_trunc_->setPlaceholderText("Set depth trunc");
   dense_layout->addWidget(depth_trunc_);
 
-  auto* h_save_layout = new QHBoxLayout(this);
+  auto* h_save_layout = new QHBoxLayout();
   dense_layout->addLayout(h_save_layout);
 
   auto* service_start_button = new QPushButton("Start");
@@ -176,7 +178,7 @@ SettingsPanel::SettingsPanel(QWidget * parent)
     dense_layout->addWidget(horizontal_line_widget);
   }
 
-  auto* h_query_percent_slider_layout = new QHBoxLayout(this);
+  auto* h_query_percent_slider_layout = new QHBoxLayout();
   dense_layout->addLayout(h_query_percent_slider_layout);
 
   h_query_percent_slider_layout->addWidget(new QLabel("Fraction:"));
@@ -196,9 +198,7 @@ SettingsPanel::SettingsPanel(QWidget * parent)
   dense_layout->addStretch();
 
   // Modality independent UI
-  auto* misc_layout = new QVBoxLayout(this);
-  auto* misc_widget = new QWidget;
-  misc_widget->setLayout(misc_layout);
+  auto* misc_layout = new QVBoxLayout();
 
   auto* export_diconde_req_button = new QPushButton("Export DICONDE");
   connect(export_diconde_req_button, &QPushButton::clicked, [this] {saveDicondeClick();});
@@ -206,16 +206,12 @@ SettingsPanel::SettingsPanel(QWidget * parent)
 
   // make tab layout of sparse and dense
   QTabWidget * tab_widget = new QTabWidget();
-  auto* sparse_widget = new QWidget;
-  auto* dense_widget = new QWidget;
-  sparse_widget->setLayout(sparse_layout);
-  dense_widget->setLayout(dense_layout);
   tab_widget->addTab(sparse_widget, "Sparse Data");
   tab_widget->addTab(dense_widget, "Dense Data");
 
   auto* parent_layout = new QVBoxLayout(this);
   parent_layout->addWidget(tab_widget, 1);  
-  parent_layout->addWidget(misc_widget);
+  parent_layout->addLayout(misc_layout);
 }
 
 void SettingsPanel::save(const rviz_common::Config conf) const {rviz_common::Panel::save(conf);}
