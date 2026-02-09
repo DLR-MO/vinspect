@@ -22,6 +22,7 @@
   <depend>protobuf</depend>
   <depend>eigen</depend>
   <depend>tbb</depend>
+  <depend>dcmtk</depend>
   
   <export>
     <build_type>ament_cmake</build_type>
