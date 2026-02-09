@@ -90,7 +90,6 @@ protected:
   vinspect_msgs::msg::Settings sparse_settings_msg_;
 
 protected Q_SLOTS:
-  void onObjectButtonClick(const QString & text);
   void onMeanButtonClick(const QString & text);
   void onColorButtonClick(const QString & text);
   void onDotSizeChange(const std::string & text);
