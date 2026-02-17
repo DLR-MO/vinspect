@@ -1,0 +1,12 @@
+; DO NOT EDIT (unless you know what you are doing)
+;
+; This subdirectory is a git "subrepo", and this file is maintained by the
+; git-subrepo command. See https://github.com/ingydotnet/git-subrepo#readme
+;
+[subrepo]
+	remote = https://github.com/LeweC/pose_tree.git
+	branch = main
+	commit = e4dcdb8fde83d0ea1af411fef757c2190bbf1fa1
+	parent = 1f37f7af2e1d97d3daf286779789f12aa6801f8d
+	method = merge
+	cmdver = 0.4.9
