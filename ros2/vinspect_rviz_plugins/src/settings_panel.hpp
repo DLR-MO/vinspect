@@ -25,6 +25,8 @@
 
 #include <rclcpp/qos.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp/timer.hpp>
+
 #include <geometry_msgs/msg/vector3.hpp>
 #include <rviz_common/display_context.hpp>
 #include <rviz_common/panel.hpp>
@@ -80,6 +82,15 @@ protected:
 
   QSlider * multi_pose_percentage;
 
+  QCheckBox * get_dense_data_near_camera_checkbox;
+
+  rclcpp::TimerBase::SharedPtr timer_camera;
+
+  bool publish_camera_data = false;
+
+  
+
+
   std::shared_ptr<rclcpp::Node> plugin_node_;
   rclcpp::Publisher<vinspect_msgs::msg::Settings>::SharedPtr settings_publisher_;
   rclcpp::Publisher<std_msgs::msg::Empty>::SharedPtr dense_req_publisher_;
@@ -88,6 +99,7 @@ protected:
   rclcpp::Client<std_srvs::srv::Empty>::SharedPtr stop_client_;
   rclcpp::Client<vinspect_msgs::srv::SaveDICONDE>::SharedPtr save_diconde_client_;
   vinspect_msgs::msg::Settings sparse_settings_msg_;
+  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr viewport_camera_pose_publisher_;
 
 protected Q_SLOTS:
   void onMeanButtonClick(const QString & text);
@@ -102,7 +114,9 @@ protected Q_SLOTS:
   void requestStopClick();
   void denseReqClick();
   void denseAvailablePosesClick();
+  void denseDataNearCameraCheckStateChanged();
   void saveDicondeClick();
+  void publishCameraView();
 };
 
 }  // namespace plugins

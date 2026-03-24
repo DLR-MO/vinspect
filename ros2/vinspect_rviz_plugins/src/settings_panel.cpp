@@ -4,6 +4,11 @@
 // SPDX-License-Identifier: MIT
 
 #include "settings_panel.hpp"
+#include "rviz_common/display_context.hpp"
+#include "rviz_common/view_controller.hpp"
+#include "rviz_common/view_manager.hpp"
+#include "rviz_common/frame_manager_iface.hpp"
+#include <OgreCamera.h>
 
 namespace plugins
 {
@@ -194,6 +199,10 @@ SettingsPanel::SettingsPanel(QWidget * parent)
   auto* dense_available_poses_button = new QPushButton("Show dense poses");
   connect(dense_available_poses_button, &QPushButton::clicked, [this] {denseAvailablePosesClick();});
   dense_layout->addWidget(dense_available_poses_button);
+
+  get_dense_data_near_camera_checkbox = new QCheckBox("Show dense data near camera", this);
+  connect(get_dense_data_near_camera_checkbox, &QCheckBox::clicked, [this] {denseDataNearCameraCheckStateChanged();});
+  dense_layout->addWidget(get_dense_data_near_camera_checkbox);
   
   dense_layout->addStretch();
 
@@ -236,6 +245,14 @@ void SettingsPanel::onInitialize()
     "vinspect/dense_data_req", latching_qos);
   dense_available_poses_publisher_ = plugin_node_->create_publisher<std_msgs::msg::Int32>(
     "vinspect/multi_dense_data_req", latching_qos);
+  viewport_camera_pose_publisher_ = plugin_node_->create_publisher<geometry_msgs::msg::PoseStamped>(
+    "vinspect/viewport_camera_pose", 1);
+
+  timer_camera = rclcpp::create_timer(
+    plugin_node_, 
+    plugin_node_->get_clock(), 
+    rclcpp::Duration::from_seconds(0.1), 
+    [&]() {publishCameraView();});
 }
 
 
@@ -370,6 +387,12 @@ void SettingsPanel::denseReqClick()
 {
   auto message = std_msgs::msg::Empty();
   dense_req_publisher_->publish(message);
+
+  if (get_dense_data_near_camera_checkbox ->isChecked())
+  {
+    get_dense_data_near_camera_checkbox->setChecked(false);
+    denseDataNearCameraCheckStateChanged();
+  }
 }
 
 void SettingsPanel::denseAvailablePosesClick()
@@ -388,6 +411,33 @@ void SettingsPanel::denseAvailablePosesClick()
   else
   {
     RCLCPP_ERROR(plugin_node_->get_logger(), "Multiple pose request value not > 0 and >= 100");
+  }
+}
+
+void SettingsPanel::denseDataNearCameraCheckStateChanged()
+{
+  publish_camera_data = !publish_camera_data;
+}
+
+void SettingsPanel::publishCameraView()
+{
+  if (getDisplayContext()->getViewManager()->getCurrent() && publish_camera_data) {
+  auto camera = getDisplayContext()->getViewManager()->getCurrent()->getCamera();
+
+  geometry_msgs::msg::PoseStamped camera_msg;
+  camera_msg.header.frame_id = getDisplayContext()->getFrameManager()->getFixedFrame();
+  camera_msg.header.stamp = plugin_node_->get_clock()->now();
+
+  camera_msg.pose.position.x = camera->getRealPosition().x;
+  camera_msg.pose.position.y = camera->getRealPosition().y;
+  camera_msg.pose.position.z = camera->getRealPosition().z;
+
+  camera_msg.pose.orientation.x = camera->getRealOrientation().x;
+  camera_msg.pose.orientation.y = camera->getRealOrientation().y;
+  camera_msg.pose.orientation.z = camera->getRealOrientation().z;
+  camera_msg.pose.orientation.w = camera->getRealOrientation().w;
+
+  viewport_camera_pose_publisher_->publish(camera_msg);
   }
 }
 
