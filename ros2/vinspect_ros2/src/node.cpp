@@ -162,6 +162,8 @@ class VinspectNode : public rclcpp::Node
     multi_dense_poses_pub_ =
       this->create_publisher<visualization_msgs::msg::MarkerArray>("visualization_marker_array",
       latching_qos);
+    camera_dense_req_pub =
+      this->create_publisher<geometry_msgs::msg::PoseStamped>("camera_after_reform", 1);
 
     old_transparency_ = -0.1;
     last_mesh_number_sparse_ = -1;
@@ -642,13 +644,34 @@ private:
 
   void CameraDenseDataReq(geometry_msgs::msg::PoseStamped pose)
   {
+    /*tronsform camera pose from looking in -z direction to looking into +x direction*/
+    double roll = 0;
+    double pitch =  -1.413717;
+    double yaw = 1.413717;
+
+    tf2::Quaternion quat;
+    quat.setEuler(yaw, pitch, roll);
+
+    tf2::Quaternion msg_quat(pose.pose.orientation.x, pose.pose.orientation.y, pose.pose.orientation.z,
+        pose.pose.orientation.w);
+    msg_quat *= quat;
+
     std::array<double, 7> dense_interactive_camera_pose_;
     
     dense_interactive_camera_pose_ = {
         pose.pose.position.x, pose.pose.position.y, pose.pose.position.z,
-        pose.pose.orientation.x, pose.pose.orientation.y, pose.pose.orientation.z,
-        pose.pose.orientation.w};
+        msg_quat.getX(), msg_quat.getY(), msg_quat.getZ(), msg_quat.getW()};
     
+    geometry_msgs::msg::PoseStamped reformed_camera_msg;
+    reformed_camera_msg.header = pose.header;
+    reformed_camera_msg.pose.position = pose.pose.position;
+    reformed_camera_msg.pose.orientation.x = msg_quat.getX();
+    reformed_camera_msg.pose.orientation.y = msg_quat.getY();
+    reformed_camera_msg.pose.orientation.z = msg_quat.getZ();
+    reformed_camera_msg.pose.orientation.w = msg_quat.getW();
+
+    camera_dense_req_pub->publish(reformed_camera_msg);
+
     denseDataReq(dense_interactive_camera_pose_);
 
   }
@@ -894,6 +917,8 @@ private:
   rclcpp::Publisher<vinspect_msgs::msg::Status>::SharedPtr status_pub_;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr dense_image_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr multi_dense_poses_pub_;
+  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr camera_dense_req_pub;
+
 
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_states_sub_;
   rclcpp::Subscription<vinspect_msgs::msg::Sparse>::SharedPtr sparse_sub_;
