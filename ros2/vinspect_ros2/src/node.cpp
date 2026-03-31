@@ -162,6 +162,8 @@ class VinspectNode : public rclcpp::Node
     multi_dense_poses_pub_ =
       this->create_publisher<visualization_msgs::msg::MarkerArray>("visualization_marker_array",
       latching_qos);
+    camera_dense_req_pub =
+      this->create_publisher<geometry_msgs::msg::PoseStamped>("camera_after_reform", 1);
 
     old_transparency_ = -0.1;
     last_mesh_number_sparse_ = -1;
@@ -219,7 +221,9 @@ class VinspectNode : public rclcpp::Node
     options3.callback_group = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
     dense_req_sub = this->create_subscription<std_msgs::msg::Empty>(
       "vinspect/dense_data_req", latching_qos,
-      std::bind(&VinspectNode::denseDataReq, this, std::placeholders::_1), options3);
+      [&](std_msgs::msg::Empty) {
+        denseDataReq(dense_interactive_marker_pose_);
+      }, options3);
 
     save_diconde_service_ = this->create_service<vinspect_msgs::srv::SaveDICONDE>(
         "/diconde/save",
@@ -231,6 +235,10 @@ class VinspectNode : public rclcpp::Node
     multi_dense_req_sub = this->create_subscription<std_msgs::msg::Int32>(
       "vinspect/multi_dense_data_req", latching_qos,
       std::bind(&VinspectNode::multiDenseDataReq, this, std::placeholders::_1), options4);
+
+    camera_dense_req_sub = this->create_subscription<geometry_msgs::msg::PoseStamped>(
+     "vinspect/viewport_camera_pose", latching_qos,
+      std::bind(&VinspectNode::CameraDenseDataReq, this, std::placeholders::_1), options4);
 
     if (inspection_->getDenseUsage()) {
       tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
@@ -565,7 +573,7 @@ private:
    */
   // Note: If it stays like this, it could also be a service/client call. Thought we have more
   // options in the future if this message is used as a settings string or something similar later.
-  void denseDataReq(std_msgs::msg::Empty)
+  void denseDataReq(const std::array<double, 7> pose)
   {
     mtx_.lock();
     if (inspection_->getDenseDataCount() == 0) {
@@ -573,7 +581,7 @@ private:
       RCLCPP_INFO(this->get_logger(), "No dense data available");
     } else {
       RCLCPP_INFO(this->get_logger(), "Asking vinspect for images");
-      int id_to_get = inspection_->getClosestDenseMeasurement(dense_interactive_marker_pose_);
+      int id_to_get = inspection_->getClosestDenseMeasurement(pose);
       auto image = inspection_->getImageFromId(id_to_get);
       auto pose = inspection_->getDensePoseFromId(id_to_get);
       pubRefMeshDense(vinspect::eulerToQuatPose(pose));
@@ -632,6 +640,40 @@ private:
     }
     multi_dense_poses_pub_->publish(markerArr);
     RCLCPP_INFO(this->get_logger(), "Showing: requested available poses.");
+  }
+
+  void CameraDenseDataReq(geometry_msgs::msg::PoseStamped pose)
+  {
+    /*tronsform camera pose from looking in -z direction to looking into +x direction*/
+    double roll = 0;
+    double pitch =  -1.413717;
+    double yaw = 1.413717;
+
+    tf2::Quaternion quat;
+    quat.setEuler(yaw, pitch, roll);
+
+    tf2::Quaternion msg_quat(pose.pose.orientation.x, pose.pose.orientation.y, pose.pose.orientation.z,
+        pose.pose.orientation.w);
+    msg_quat *= quat;
+
+    std::array<double, 7> dense_interactive_camera_pose_;
+    
+    dense_interactive_camera_pose_ = {
+        pose.pose.position.x, pose.pose.position.y, pose.pose.position.z,
+        msg_quat.getX(), msg_quat.getY(), msg_quat.getZ(), msg_quat.getW()};
+    
+    geometry_msgs::msg::PoseStamped reformed_camera_msg;
+    reformed_camera_msg.header = pose.header;
+    reformed_camera_msg.pose.position = pose.pose.position;
+    reformed_camera_msg.pose.orientation.x = msg_quat.getX();
+    reformed_camera_msg.pose.orientation.y = msg_quat.getY();
+    reformed_camera_msg.pose.orientation.z = msg_quat.getZ();
+    reformed_camera_msg.pose.orientation.w = msg_quat.getW();
+
+    camera_dense_req_pub->publish(reformed_camera_msg);
+
+    denseDataReq(dense_interactive_camera_pose_);
+
   }
 
   /**
@@ -875,6 +917,8 @@ private:
   rclcpp::Publisher<vinspect_msgs::msg::Status>::SharedPtr status_pub_;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr dense_image_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr multi_dense_poses_pub_;
+  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr camera_dense_req_pub;
+
 
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_states_sub_;
   rclcpp::Subscription<vinspect_msgs::msg::Sparse>::SharedPtr sparse_sub_;
@@ -887,6 +931,8 @@ private:
     selection_marker_sub_, pose_marker_sub_;
   rclcpp::Subscription<std_msgs::msg::Empty>::SharedPtr dense_req_sub;
   rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr multi_dense_req_sub;
+  rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr camera_dense_req_sub;
+
 
   rclcpp::Service<vinspect_msgs::srv::StartReconstruction>::SharedPtr start_reconstruction_service_;
   rclcpp::Service<std_srvs::srv::Empty>::SharedPtr stop_reconstruction_service_;
